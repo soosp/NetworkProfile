@@ -9,6 +9,10 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix includes in Quick Start example
+
 ## [0.1.0] - 2026-07-16
 
 First public release.

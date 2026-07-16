@@ -66,8 +66,8 @@ Search for **NetworkProfile** in the Arduino IDE Library Manager.
 ## Quick Start
 
 ```cpp
-#include "WiFiProfile.h"
-#include "EthProfile.h"
+#include <WiFiProfile.h>
+#include <EthProfile.h>
 
 WiFiProfile wifiProfile;
 EthProfile  ethProfile;
