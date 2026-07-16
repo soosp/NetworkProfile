@@ -17,7 +17,7 @@
  */
 
 #include <Arduino.h>
-#include "WiFiProfile.h"
+#include <WiFiProfile.h>
 
 // Preferences namespace for the save/load round-trip.
 static constexpr char NS_NTP[] = "net_ntp";

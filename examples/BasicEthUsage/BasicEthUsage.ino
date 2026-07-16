@@ -18,7 +18,7 @@
 #define NETWORK_PROFILE_NTP_SERVER_COUNT 1
 
 #include <Arduino.h>
-#include "EthProfile.h"
+#include <EthProfile.h>
 
 // Preferences namespaces — one per interface
 static constexpr char NS_ETH[]  = "net_eth";

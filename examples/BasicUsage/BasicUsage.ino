@@ -13,8 +13,8 @@
  */
 
 #include <Arduino.h>
-#include "WiFiProfile.h"
-#include "EthProfile.h"
+#include <WiFiProfile.h>
+#include <EthProfile.h>
 
 // Preferences namespaces — one per interface
 static constexpr char NS_WIFI[] = "net_wifi";
