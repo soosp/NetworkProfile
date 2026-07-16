@@ -1,0 +1,472 @@
+# NetworkProfile — API Reference
+
+## Table of Contents
+
+- [Compile-time macros](#compile-time-macros)
+- [NetworkProfile](#networkprofile-class)
+  - [Constants](#constants)
+  - [Types and enums](#types-and-enums)
+  - [NetworkConfig struct](#networkconfig-struct)
+  - [Constructors](#constructors)
+  - [Interface type](#interface-type)
+  - [IP configuration](#ip-configuration)
+  - [Hostname](#hostname)
+  - [NTP servers](#ntp-servers)
+  - [Priority](#priority)
+  - [MAC address](#mac-address)
+  - [Bulk configuration](#bulk-configuration)
+  - [Serialisation](#serialisation)
+  - [Persistence](#persistence)
+  - [Static utilities](#static-utilities)
+- [WiFiProfile](#wifiprofile-class)
+  - [Constants](#wifiprofile-constants)
+  - [WiFiCredentials struct](#wificredentials-struct)
+  - [WiFiConfig struct](#wificonfig-struct)
+  - [Constructors](#wifiprofile-constructors)
+  - [Credentials](#credentials)
+  - [TX power](#tx-power)
+  - [Bulk configuration](#wifiprofile-bulk-configuration)
+  - [Static validators](#static-validators)
+- [EthProfile](#ethprofile-class)
+  - [Constructors](#ethprofile-constructors)
+
+---
+
+## Compile-time macros
+
+Define these **before** including any library header, or via `platformio.ini` `build_flags`.
+
+|Macro|Default|Range|Description|
+|---|---|---|---|
+|`HOST_FQDN_LEN`|253|1 – 253|Maximum FQDN length in `Host` objects.|
+|`HOST_FQDN_LABEL_LEN`|63|1 – 63|Maximum single label length. Must be ≤ `HOST_FQDN_LEN`.|
+|`NETWORK_PROFILE_NTP_SERVER_COUNT`|3|0 – 3|NTP server slots per profile. 0 disables NTP entirely.|
+|`NETWORK_PROFILE_DNS_SERVER_COUNT`|2|1 – 2|DNS server slots per profile.|
+|`NETWORK_PROFILE_HOSTNAME_LEN`|63|10 – 63|Maximum hostname length. Lower bound accommodates the generated default (e.g. `ESP-02D6FC`).|
+|`NETWORK_PROFILE_JSON_LEN`|1200|—|Maximum JSON content length. Reduce after lowering other buffer sizes.|
+|`NETWORK_PROFILE_MUTEX_TIMEOUT`|1000|—|Mutex acquisition timeout in milliseconds. Used on ESP32 only; ESP8266 (cooperative scheduling) and AVR (single-threaded) have no lock and ignore it.|
+|`NETWORK_PROFILE_DEFAULT_ETH_MAC`|—|—|Required on AVR platforms without a unique serial number. Format: `"4E:52:47:30:30:31"`.|
+|`WIFI_PROFILE_DEFAULT_WIFI_TX_POWER`|19.5 (ESP32) / 20.5 (ESP8266)|—|Default WiFi TX power in dBm.|
+
+---
+
+## NetworkProfile class
+
+Abstract base class for all network interface profiles. Not instantiated
+directly — use `WiFiProfile` or `EthProfile`.
+
+### Constants
+
+|Constant|Value|Description|
+|---|---|---|
+|`NTP_SERVER_COUNT`|3|Effective NTP server count (reflects macro).|
+|`DNS_SERVER_COUNT`|2|Effective DNS server count (reflects macro).|
+|`MAC_LEN`|6|MAC address length in bytes.|
+|`MAC_STR_SIZE`|18|MAC string buffer size (`"AA:BB:CC:DD:EE:FF\0"`).|
+|`MUTEX_TIMEOUT`|1000|Mutex acquisition timeout in milliseconds.|
+|`MAX_HOSTNAME_LEN`|63|Effective maximum hostname length (reflects macro).|
+|`MAX_HOSTNAME_SIZE`|64|Hostname buffer size including null terminator.|
+|`PRIORITY_INVALID`|255|Sentinel returned by `getPriority()` on mutex timeout. Valid priorities are [0, 254].|
+|`JSON_LEN`|1200|Effective JSON content length (reflects macro).|
+|`JSON_SIZE`|1201|JSON buffer size including null terminator.|
+
+### Types and enums
+
+#### `InterfaceType`
+
+```cpp
+enum class InterfaceType : uint8_t {
+    UNKNOWN = 0,
+    WIFI    = 1,
+    ETH     = 2,
+};
+```
+
+Returned by `getInterfaceType()`. Each subclass returns a compile-time constant.
+
+#### `ConfigSource`
+
+```cpp
+enum class ConfigSource : uint8_t {
+    ACTIVE  = 0,
+    DEFAULT = 1,
+};
+```
+
+Selects between the active (user-set) value and the hardware default for
+`getMac()` and `getHostname()`.
+
+- `ACTIVE` — returns the user-set override if present; falls back to `FACTORY`
+  if not set.
+- `FACTORY` — always returns the generated/factory value regardless of any override.
+
+#### `MACAddress`
+
+```cpp
+using MACAddress = uint8_t[MAC_LEN];
+```
+
+### NetworkConfig struct
+
+Aggregates all profile fields for atomic get/set via `setConfig()` / `getConfig()`.
+
+```cpp
+struct NetworkConfig {
+    bool       dhcp     = true;
+    IPAddress  ip;
+    IPAddress  mask;
+    IPAddress  gateway;
+    IPAddress  dns[DNS_SERVER_COUNT];
+    char       hostname[MAX_HOSTNAME_SIZE]                = {};
+    char       ntp[NTP_SERVER_COUNT][Host::MAX_FQDN_SIZE] = {};  // if NTP_SERVER_COUNT > 0
+    uint8_t    priority = 0;
+    MACAddress mac      = {};
+};
+```
+
+**Notes:**
+
+- `ntp[]` holds string representations (dotted-decimal IP or FQDN). Each entry
+  is validated (IP or FQDN) and stored by `setConfig()`. An empty string resets
+  the corresponding NTP slot.
+- `mac` sets the active MAC override. To revert to the hardware default, set
+  all bytes to `0x00`.
+
+### Constructors
+
+```cpp
+NetworkProfile();
+explicit NetworkProfile(const NetworkConfig& cfg);
+```
+
+`NetworkProfile` is non-copyable. The default MAC is generated by
+`_initMacDefault()`, which is called from the subclass constructor.
+
+### Interface type
+
+```cpp
+virtual InterfaceType getInterfaceType() const = 0;
+```
+
+Returns the interface type. Compile-time constant — no mutex needed.
+
+### IP configuration
+
+All methods are thread-safe.
+
+```cpp
+bool      isDhcp()   const;
+bool      setDhcp(bool dhcp);
+
+IPAddress getIp()    const;
+bool      setIp(IPAddress ip);
+
+IPAddress getMask()  const;
+bool      setMask(IPAddress mask);
+
+IPAddress getGateway() const;
+bool      setGateway(IPAddress gateway);
+
+IPAddress getDns(uint8_t index = 0) const;
+bool      setDns(IPAddress dns, uint8_t index = 0);
+```
+
+`getDns()` and `setDns()` accept an `index` in `[0, DNS_SERVER_COUNT)`.
+Out-of-range values are clamped to 0. `getDns()` returns `0.0.0.0` on mutex
+timeout.
+
+### Hostname
+
+```cpp
+bool getHostname(char* buf, size_t len,
+                 ConfigSource source = ConfigSource::ACTIVE) const;
+bool setHostname(const char* hostname);
+static bool isValidHostname(const char* hostname);
+```
+
+**`getHostname()`** — copies the hostname into `buf`. With
+`ConfigSource::ACTIVE`, returns the user-set hostname if present, otherwise
+falls back to the generated default (e.g. `ESP-02D6FC`). With
+`ConfigSource::FACTORY`, always returns the generated default. Returns `false`
+on truncation or mutex failure.
+
+**`setHostname()`** — validates against RFC 1123 before storing. An empty
+string resets the active hostname; subsequent `getHostname()` calls will return
+the generated default.
+
+**`isValidHostname()`** — enforces: length 1–`MAX_HOSTNAME_LEN`, ASCII
+letters/digits/hyphens only, no leading or trailing hyphen, not all-numeric.
+
+### NTP servers
+
+Available only when `NETWORK_PROFILE_NTP_SERVER_COUNT > 0`.
+
+```cpp
+bool getNtp(uint8_t index, char* out, size_t len) const;
+bool setNtp(const char* str, uint8_t index = 0);
+bool isConfiguredNtp() const;
+```
+
+**`getNtp()`** — copies the configured server (IP or FQDN) at `index` into
+`out`, read under the `NetworkProfile` mutex so it composes atomically with the
+other getters. Returns `false` on an out-of-range index, truncation, or mutex
+timeout; `out` is set to `""` on failure. An empty slot yields `""` and `true`.
+
+**`setNtp()`** — validates `str` as a dotted-decimal IP or an FQDN and stores it
+(`index` clamped to 0 if out of range). An empty string resets the slot. Returns
+`false` if the string is neither a valid IP nor a valid FQDN, leaving the entry
+unchanged.
+
+**`isConfiguredNtp()`** — returns `true` if at least one NTP slot holds a
+non-empty string, `false` if all slots are empty or
+`NETWORK_PROFILE_NTP_SERVER_COUNT` is 0. Used by adapters (see
+[NetworkManager](https://github.com/soosp/NetworkManager)) to decide whether to
+request NTP server addresses via DHCP option 42 when no explicit server is
+configured in the profile.
+
+### Priority
+
+```cpp
+uint8_t getPriority() const;
+bool    setPriority(uint8_t priority);
+```
+
+Lower value = higher priority. Valid range: [0, 254]. Value 255 is reserved as
+`PRIORITY_INVALID` and is rejected by `setPriority()`. `getPriority()` returns
+`PRIORITY_INVALID` on mutex timeout.
+
+### MAC address
+
+```cpp
+bool getMac(MACAddress mac,
+            ConfigSource source = ConfigSource::ACTIVE) const;
+bool setMac(const MACAddress mac);
+```
+
+**`getMac()`** — with `ConfigSource::ACTIVE`, returns the user-set override if
+non-zero, otherwise the hardware default. With `ConfigSource::FACTORY`, always
+returns the hardware default.
+
+**`setMac()`** — validates with `isValidMac()` before storing. To revert to the
+hardware default, use `setConfig()` with `mac` set to all zeros.
+
+### Bulk configuration
+
+```cpp
+bool setConfig(const NetworkConfig& cfg);
+bool getConfig(NetworkConfig& cfg) const;
+```
+
+**`setConfig()`** — atomically updates all base fields (IP, DNS, hostname, NTP,
+priority, MAC) in a single mutex acquisition. Hostname and NTP entries are
+validated before the mutex is acquired — the profile is not modified if
+validation fails.
+
+**`getConfig()`** — atomically reads all base fields, including NTP, in a single
+mutex acquisition. The `mac` field in the returned struct contains the active
+MAC override (may be all zeros if no override is set).
+
+### Serialisation
+
+```cpp
+bool toJson(char* json, size_t len) const;
+```
+
+Serialises the full profile to a JSON object. Password is intentionally omitted
+for security.
+
+Output fields (base class): `dhcp`, `ip`, `mask`, `gw`, `dns0`[…`dns1`],
+`host`, `prio`, `mac`[, `ntp0`…`ntp2`].
+
+`WiFiProfile` appends `ssid` and `txpwr` via `_doJson()`.
+
+Use `NetworkProfile::JSON_SIZE` as the buffer size:
+
+```cpp
+char json[NetworkProfile::JSON_SIZE];
+profile.toJson(json, sizeof(json));
+```
+
+Returns `false` on mutex timeout or output truncation.
+
+### Persistence
+
+```cpp
+bool saveCfg(const char* ns);
+bool loadCfg(const char* ns);
+bool clearCfg(const char* ns);
+```
+
+Use the `Preferences` namespace as a key (e.g. `"net_wifi"`, `"net_eth"`).
+
+Persistence is **transactional**: `saveCfg()` writes a completion marker last,
+so `loadCfg()` returns `false` for a namespace that was never saved *or* whose
+save was interrupted (e.g. power loss) — it never loads a half-written profile.
+
+**`saveCfg()`** — saves the full profile to non-volatile storage. Returns
+`true` on success; `false` on a storage failure or mutex timeout. Because the
+store is single-buffered, an interrupted re-save also invalidates the previously
+stored profile (there is no rollback to the prior copy).
+
+**`loadCfg()`** — loads the full profile from non-volatile storage. Returns
+`true` on success; `false` on an empty/never-written namespace, an incomplete
+save (torn write), a storage failure, or mutex timeout — so a `false` return is
+the reliable "no valid saved configuration" signal used by the first-run
+pattern.
+
+**`clearCfg()`** — erases the entire Preferences namespace. After calling this,
+`loadCfg()` returns `false` and a reboot will load default values.
+
+### Static utilities
+
+```cpp
+static bool macToStr(char* buf, size_t len, const MACAddress mac);
+static bool macFromStr(const char* str, MACAddress mac);
+static bool isValidMac(const MACAddress mac);
+```
+
+**`macToStr()`** — serialises a MAC address to `"AA:BB:CC:DD:EE:FF"` format
+(uppercase hex, colon-separated). Buffer must be at least `MAC_STR_SIZE` bytes.
+
+**`macFromStr()`** — parses `"AA:BB:CC:DD:EE:FF"` format (case-insensitive).
+
+**`isValidMac()`** — returns `false` if all bytes are `0x00` (unset) or all
+bytes are `0xFF` (broadcast).
+
+---
+
+## WiFiProfile class
+
+Extends `NetworkProfile` with WiFi-specific credentials and TX power.
+
+**Platform:** ESP32 and ESP8266 only. Not available on AVR.
+
+### WiFiProfile constants
+
+|Constant|Value|Description|
+|---|---|---|
+|`MAX_SSID_LEN`|32|Maximum SSID length (IEEE 802.11), excluding null terminator. Exposed as a **macro**, not a class constant — see note below.|
+|`MAX_SSID_SIZE`|33|SSID buffer size including null terminator.|
+|`MAX_PASSWORD_LEN`|63|Maximum WPA2-PSK password length, excluding null terminator.|
+|`MAX_PASSWORD_SIZE`|64|Password buffer size including null terminator.|
+|`MIN_WIFI_TX_POWER_dBm`|−1.0 (ESP32) / 0.0 (ESP8266)|Minimum TX power in dBm.|
+|`MAX_WIFI_TX_POWER_dBm`|19.5 (ESP32) / 20.5 (ESP8266)|Maximum TX power in dBm.|
+|`WIFI_TX_POWER_STEP_dBm`|0.25|TX power step in dBm.|
+|`WIFI_TX_POWER_MULTIPLIER`|4.0|Converts dBm to platform integer unit. Used by adapters.|
+|`DEFAULT_WIFI_TX_POWER_dBm`|19.5 / 20.5|Default TX power (overridable via macro).|
+
+> **`MAX_SSID_LEN` is a macro, not a class constant.** The ESP32 WiFi SDK already
+> defines `MAX_SSID_LEN` as a macro (= 32); a same-named class constant would
+> collide with it. It is therefore provided as a guarded macro for a uniform API
+> across ESP32 and ESP8266, and must be used unqualified (`MAX_SSID_LEN`,
+> never `WiFiProfile::MAX_SSID_LEN`). `MAX_PASSWORD_LEN` has no such collision and
+> remains a normal class constant (`WiFiProfile::MAX_PASSWORD_LEN`).
+
+### WiFiCredentials struct
+
+```cpp
+struct WiFiCredentials {
+    char ssid    [MAX_SSID_SIZE]     = {};
+    char password[MAX_PASSWORD_SIZE] = {};
+};
+```
+
+Used with `setWiFiCredentials()` / `getWiFiCredentials()` for atomic
+SSID + password update.
+
+### WiFiConfig struct
+
+```cpp
+struct WiFiConfig : public NetworkConfig {
+    char  ssid    [MAX_SSID_SIZE]     = {};
+    char  password[MAX_PASSWORD_SIZE] = {};
+    float txPower                     = DEFAULT_WIFI_TX_POWER_dBm;
+};
+```
+
+Extends `NetworkConfig` with WiFi credentials and TX power. Used with
+`setConfig(WiFiConfig)` / `getConfig(WiFiConfig)`.
+
+### WiFiProfile constructors
+
+```cpp
+WiFiProfile();
+explicit WiFiProfile(const NetworkConfig& cfg);
+explicit WiFiProfile(const WiFiConfig& cfg);
+```
+
+When constructing from `WiFiConfig`, invalid SSID or password are silently
+ignored (SSID remains empty, password remains empty = open network). Base IP
+configuration is always applied.
+
+### Credentials
+
+```cpp
+bool getSsid(char* buf, size_t len) const;
+bool setSsid(const char* ssid);
+
+bool getPassword(char* buf, size_t len) const;
+bool setPassword(const char* password);
+
+bool setWiFiCredentials(const WiFiCredentials& creds);
+bool getWiFiCredentials(WiFiCredentials& creds) const;
+```
+
+All methods are thread-safe. `getSsid()` / `getPassword()` return `false`
+on truncation or mutex failure. An empty password is accepted and treated
+as an open network (no authentication).
+
+`setWiFiCredentials()` / `getWiFiCredentials()` update both SSID and password
+atomically in a single mutex acquisition.
+
+### TX power
+
+```cpp
+float getTxPower() const;
+bool  setTxPower(float dbm);
+```
+
+`getTxPower()` returns the TX power in dBm, or `NAN` on mutex failure.
+`setTxPower()` validates the value against platform limits and step size before
+storing.
+
+### WiFiProfile bulk configuration
+
+```cpp
+bool setConfig(const WiFiConfig& cfg);
+bool getConfig(WiFiConfig& cfg) const;
+```
+
+Extends the base `setConfig()` / `getConfig()` with SSID, password, and
+TX power. All WiFi-specific fields are validated before the mutex is acquired.
+
+### Static validators
+
+```cpp
+static bool isValidSsid(const char* ssid);
+static bool isValidPassword(const char* password);
+static bool isValidTxPower(float dbm);
+```
+
+**`isValidSsid()`** — enforces length [1, `MAX_SSID_LEN`]. Character content
+is not restricted (SSID is a binary field per IEEE 802.11).
+
+**`isValidPassword()`** — accepts empty string (open network). Non-empty
+passwords must be 8–63 printable ASCII characters (0x20–0x7E) per WPA2-PSK.
+
+**`isValidTxPower()`** — checks platform range and that the value is a multiple
+of `WIFI_TX_POWER_STEP_dBm`.
+
+---
+
+## EthProfile class
+
+Extends `NetworkProfile` for Ethernet interfaces. No additional fields on
+ESP32/ESP8266/AVR.
+
+### EthProfile constructors
+
+```cpp
+EthProfile();
+explicit EthProfile(const NetworkConfig& cfg);
+```
