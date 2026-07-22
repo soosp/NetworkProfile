@@ -13,6 +13,14 @@ and this project adheres to
 
 - Fix includes in Quick Start example
 
+### Added
+
+- Expose a previously protected, configuration validator function
+  to the public API for all configuration types:
+  - `static bool isValidConfig(const NetworkConfig& cfg);`
+  - `static bool isValidConfig(const WiFiConfig& cfg);`
+- Document the new API additions.
+
 ## [0.1.0] - 2026-07-16
 
 First public release.

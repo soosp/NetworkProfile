@@ -412,10 +412,7 @@ public:
      * @return true on success, false on invalid credentials or mutex timeout.
      */
     bool setConfig(const WiFiConfig& cfg) {
-        if (!isValidSsid(cfg.ssid))         return false;
-        if (!isValidPassword(cfg.password)) return false;
-        if (!isValidTxPower(cfg.txPower))   return false;
-        if (!_isValidConfig(cfg))           return false;
+        if (!isValidConfig(cfg)) return false;
         if (!_lock()) return false;
         _doSetConfig(cfg);
         strncpy(_ssid,     cfg.ssid,     MAX_SSID_LEN);
@@ -446,6 +443,38 @@ public:
         cfg.txPower = _txPower;
         _doGetNtpConfig(cfg);
         _unlock();
+        return true;
+    }
+
+    /**
+     * @brief Makes the base-class overload visible alongside the Wi-Fi one.
+     *
+     * Without this, declaring isValidConfig() below would hide every inherited
+     * overload — C++ name lookup stops at the first scope holding the name, so
+     * the parameter types never get to disambiguate across class scopes.
+     *
+     * It does not make the choice dynamic, though: these are static functions,
+     * so a call through a NetworkProfile pointer or reference always selects the
+     * base overload at compile time, silently skipping the SSID, password and
+     * TX-power checks. Callers holding a base pointer must branch on
+     * getInterfaceType() and cast, exactly as they already do for setConfig().
+     */
+    using NetworkProfile::isValidConfig;
+
+    /**
+     * @brief Checks whether hostname, ntp, ssid, password and txPower
+     *        configuration fields are valid.
+     *
+     * Called by setConfig() and subclass setConfig() before mutex acquisition.
+     * 
+     * @param cfg Configuration struct to check.
+     * @return true if all checks passed, false otherwise.
+     */
+    static bool isValidConfig(const WiFiConfig& cfg) {
+        if (!isValidSsid(cfg.ssid))              return false;
+        if (!isValidPassword(cfg.password))      return false;
+        if (!isValidTxPower(cfg.txPower))        return false;
+        if (!NetworkProfile::isValidConfig(cfg)) return false;
         return true;
     }
 

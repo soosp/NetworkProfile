@@ -692,7 +692,7 @@ public:
      * @return true on success, false on mutex timeout.
      */
     bool setConfig(const NetworkConfig& cfg) {
-        if (!_isValidConfig(cfg)) return false;
+        if (!isValidConfig(cfg)) return false;
         if (!_lock()) return false;
         _doSetConfig(cfg);
         _doSetNtpConfig(cfg);
@@ -714,6 +714,26 @@ public:
         _doGetConfig(cfg);
         _doGetNtpConfig(cfg);
         _unlock();
+        return true;
+    }
+
+    /**
+     * @brief Checks whether hostname and ntp configuration fields are valid.
+     *
+     * Called by setConfig() and subclass setConfig() before mutex acquisition.
+     * 
+     * @param cfg Configuration struct to check.
+     * @return true if all checks passed, false otherwise.
+     */
+    static bool isValidConfig(const NetworkConfig& cfg) {
+        if (cfg.hostname[0] != '\0' && !isValidHostname(cfg.hostname)) return false;
+#if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
+        for (uint8_t i = 0; i < NTP_SERVER_COUNT; i++) {
+            if (cfg.ntp[i][0] != '\0'
+                && !Host::isValidIp(cfg.ntp[i])
+                && !Host::isValidFqdn(cfg.ntp[i])) return false;
+        }
+#endif
         return true;
     }
 
@@ -1113,26 +1133,6 @@ protected:
 #else
         (void)cfg;   // NTP disabled at compile time: nothing to fill
 #endif
-    }
-
-    /**
-     * @brief Checks whether hostname and ntp configuration fields are valid.
-     *
-     * Called by setConfig() and subclass setConfig() before mutex acquisition.
-     * 
-     * @param cfg Configuration struct to check.
-     * @return true if all checks passed, false otherwise.
-     */
-    bool _isValidConfig(const NetworkConfig& cfg) const {
-        if (cfg.hostname[0] != '\0' && !isValidHostname(cfg.hostname)) return false;
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
-        for (uint8_t i = 0; i < NTP_SERVER_COUNT; i++) {
-            if (cfg.ntp[i][0] != '\0'
-                && !Host::isValidIp(cfg.ntp[i])
-                && !Host::isValidFqdn(cfg.ntp[i])) return false;
-        }
-#endif
-        return true;
     }
 
     // -----------------------------------------------------------------------

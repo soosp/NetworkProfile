@@ -323,6 +323,7 @@ pattern.
 static bool macToStr(char* buf, size_t len, const MACAddress mac);
 static bool macFromStr(const char* str, MACAddress mac);
 static bool isValidMac(const MACAddress mac);
+static bool isValidConfig(const NetworkConfig& cfg);
 ```
 
 **`macToStr()`** — serialises a MAC address to `"AA:BB:CC:DD:EE:FF"` format
@@ -332,6 +333,9 @@ static bool isValidMac(const MACAddress mac);
 
 **`isValidMac()`** — returns `false` if all bytes are `0x00` (unset) or all
 bytes are `0xFF` (broadcast).
+
+**`isValidConfig()`** — returns `true` if hostname and ntp configuration fields
+are valid.
 
 ---
 
@@ -385,7 +389,8 @@ struct WiFiConfig : public NetworkConfig {
 ```
 
 Extends `NetworkConfig` with WiFi credentials and TX power. Used with
-`setConfig(WiFiConfig)` / `getConfig(WiFiConfig)`.
+`setConfig(WiFiConfig)` / `getConfig(WiFiConfig)` /
+`isValidConfig(WiFiConfig&)`.
 
 ### WiFiProfile constructors
 
@@ -446,6 +451,7 @@ TX power. All WiFi-specific fields are validated before the mutex is acquired.
 static bool isValidSsid(const char* ssid);
 static bool isValidPassword(const char* password);
 static bool isValidTxPower(float dbm);
+static bool isValidConfig(const WiFiConfig& cfg);
 ```
 
 **`isValidSsid()`** — enforces length [1, `MAX_SSID_LEN`]. Character content
@@ -456,6 +462,9 @@ passwords must be 8–63 printable ASCII characters (0x20–0x7E) per WPA2-PSK.
 
 **`isValidTxPower()`** — checks platform range and that the value is a multiple
 of `WIFI_TX_POWER_STEP_dBm`.
+
+**`isValidConfig()`** — extends the base `isValidConfig()` with SSID, password,
+and TX power validations.
 
 ---
 
