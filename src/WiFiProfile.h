@@ -54,6 +54,19 @@
 class WiFiProfile : public NetworkProfile {
 public:
 
+    /**
+     * @brief Selects between the supported Wi-Fi security configurations.
+     *
+     * These are not actual Wi-Fi security protocols; they merely describe the
+     * basis for authentication.
+     */
+    enum class WiFiSecurity : uint8_t {
+        UNKNOWN  = 0,
+        OPEN     = 1,
+        PASSWORD = 2,
+    };
+
+
     /** 
      * @brief Maximum SSID length in bytes, excluding null terminator.
      * Exposed as the macro MAX_SSID_LEN (= 32); see the note at the top of
@@ -283,6 +296,32 @@ public:
         _unlock();
         return true;
     }
+
+    /**
+     * @brief Gets the WiFi authentication type.
+     *
+     * An empty string is accepted in the password and treated as an open
+     * network (no authentication). If the first byte of the password is `\0`,
+     * the network is an unsecured open network.
+     *
+     * Returns the *shape* of the credential, never the credential itself, so a
+     * caller can render the right controls without the passphrase leaving the
+     * profile. UNKNOWN is a third state on purpose: a mutex failure is not an
+     * answer, and folding it into either OPEN or PASSWORD would make one of
+     * them a lie.
+     *
+     * @return WiFiSecurity::UNKNOWN on mutex failure,
+     *         WiFiSecurity::OPEN on empty password,
+     *         WiFiSecurity::PASSWORD otherwise.
+     */
+    WiFiSecurity getSecurity() const {
+        if (!_lock()) return WiFiSecurity::UNKNOWN;
+        WiFiSecurity s = (_password[0] == '\0') ?
+                          WiFiSecurity::OPEN : WiFiSecurity::PASSWORD;
+        _unlock();
+        return s;
+    }
+
 
     /**
      * @brief Gets the maximum WiFi transmit power.

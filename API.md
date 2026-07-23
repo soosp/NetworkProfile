@@ -20,9 +20,11 @@
   - [Static utilities](#static-utilities)
 - [WiFiProfile](#wifiprofile-class)
   - [Constants](#wifiprofile-constants)
+  - [WiFiSecurity enum](#wifisecurity-enum)
   - [WiFiCredentials struct](#wificredentials-struct)
   - [WiFiConfig struct](#wificonfig-struct)
   - [Constructors](#wifiprofile-constructors)
+  - [Security type getter](#security-type-getter)
   - [Credentials](#credentials)
   - [TX power](#tx-power)
   - [Bulk configuration](#wifiprofile-bulk-configuration)
@@ -366,6 +368,19 @@ Extends `NetworkProfile` with WiFi-specific credentials and TX power.
 > never `WiFiProfile::MAX_SSID_LEN`). `MAX_PASSWORD_LEN` has no such collision and
 > remains a normal class constant (`WiFiProfile::MAX_PASSWORD_LEN`).
 
+### `WiFiSecurity` enum
+
+```cpp
+enum class WiFiSecurity : uint8_t {
+        UNKNOWN  = 0,
+        OPEN     = 1,
+        PASSWORD = 2,
+};
+```
+
+These values are not related to actual Wi-Fi security protocols; they merely
+describe the basis for authentication.
+
 ### WiFiCredentials struct
 
 ```cpp
@@ -403,6 +418,22 @@ explicit WiFiProfile(const WiFiConfig& cfg);
 When constructing from `WiFiConfig`, invalid SSID or password are silently
 ignored (SSID remains empty, password remains empty = open network). Base IP
 configuration is always applied.
+
+### Security type getter
+
+```cpp
+WiFiSecurity getSecurity() const;
+```
+
+As an empty string is accepted as password and treated as an open network
+(no authentication). If the first byte of the password is `\`\0\``,the network
+is an unsecured open network.
+
+Returns the *shape* of the credential, never the credential itself, so a caller
+can render the right controls without the passphrase leaving the profile.
+`WiFiSecurity::UNKNOWN` is a third state on purpose: a mutex failure is not an
+answer, and folding it into either `WiFiSecurity::OPEN` or
+`WiFiSecurity::PASSWORD` would make one of them a lie.
 
 ### Credentials
 

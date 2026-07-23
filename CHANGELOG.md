@@ -9,6 +9,10 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- Add WiFi security type enum and getter.
+
 ## [0.2.0] - 2026-07-23
 
 ### Fixed
