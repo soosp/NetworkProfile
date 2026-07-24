@@ -9,8 +9,23 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- `isValidTxPower()` now tests membership of the levels the radio actually
+  supports on ESP32, instead of accepting any multiple of
+  `WIFI_TX_POWER_STEP_dBm`. **Breaking:** values such as 19.25 dBm are now
+  rejected by `setTxPower()` and `setConfig()`; previously they were stored and
+  then silently stepped down to a lower level by the IDF, leaving the radio at a
+  power nobody had chosen. ESP8266 is unchanged — there the 0.25 dBm grid is
+  genuine.
+
 ### Added
 
+- `WIFI_TX_POWER_LEVELS_Q[]` and `WIFI_TX_POWER_LEVEL_COUNT` (ESP32) — the
+  supported transmit power levels in quarter-dBm, derived from the Arduino
+  core's `wifi_power_t` enum so a core update carries them along.
+- `#error` for architectures other than ESP32 and ESP8266, replacing a silent
+  fall-through that surfaced as unrelated errors far from the real cause.
 - Add architecture guard to `WiFiProfile.h`.
 
 ## [0.3.0] - 2026-07-23

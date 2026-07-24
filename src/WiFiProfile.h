@@ -97,6 +97,27 @@ public:
     static constexpr float MAX_WIFI_TX_POWER_dBm  = 19.5f;
     /** @brief WiFi trasmit power step in dBm */
     static constexpr float WIFI_TX_POWER_STEP_dBm = 0.25f;
+
+    /**
+     * @brief Supported transmit power levels in the hardware's own unit
+     *        (quarter dBm), ascending.
+     *
+     * Kept as integers because that is what both the enum and the radio use;
+     * dBm is a presentation of this, not the other way round. Comparing in the
+     * native unit also removes every float equality test — the current
+     * "multiply by four and check for a whole number" trick is exact only
+     * because 0.25 happens to be a power of two, which is not a property
+     * anyone should have to rediscover.
+     */
+    static constexpr int16_t WIFI_TX_POWER_LEVELS_Q[] = {
+        WIFI_POWER_MINUS_1dBm, WIFI_POWER_2dBm,   WIFI_POWER_5dBm,
+        WIFI_POWER_7dBm,       WIFI_POWER_8_5dBm, WIFI_POWER_11dBm,
+        WIFI_POWER_13dBm,      WIFI_POWER_15dBm,  WIFI_POWER_17dBm,
+        WIFI_POWER_18_5dBm,    WIFI_POWER_19dBm,  WIFI_POWER_19_5dBm,
+    };
+    static constexpr uint8_t WIFI_TX_POWER_LEVEL_COUNT =
+        sizeof(WIFI_TX_POWER_LEVELS_Q) / sizeof(WIFI_TX_POWER_LEVELS_Q[0]);
+
 #elif defined(ARDUINO_ARCH_ESP8266)
     /** @brief Minimal WiFi trasmit power in dBm */
     static constexpr float MIN_WIFI_TX_POWER_dBm  =  0.0f;
@@ -114,8 +135,7 @@ public:
      *        unit.
      *
      * Derived from WIFI_TX_POWER_STEP_dBm to avoid runtime division.
-     * Used in validation (isValidTxPower()) and hardware application
-     * (ESP32WiFiAdapter).
+     * Used for validation in isValidTxPower().
      */
     static constexpr float WIFI_TX_POWER_MULTIPLIER = 1.0f / WIFI_TX_POWER_STEP_dBm;
 
@@ -399,16 +419,31 @@ public:
      *
      * @param dbm The transmit power in dBm to validate.
      * @return true if the provided value is valid, false otherwise.
+     *
+     * "Valid" means different things per platform, and a caller building a UI
+     * needs to know which: on ESP32 the radio supports a dozen discrete levels
+     * and anything between two of them is rejected rather than snapped, so the
+     * levels in WIFI_TX_POWER_LEVELS_Q are the only accepted values. On ESP8266
+     * the 0.25 dBm grid is real and any value in
+     * [MIN_WIFI_TX_POWER_dBm, MAX_WIFI_TX_POWER_dBm] is accepted — the Arduino
+     * layer truncates to the grid itself.
      */
     static bool isValidTxPower(const float dbm) {
-        if (dbm < MIN_WIFI_TX_POWER_dBm || dbm > MAX_WIFI_TX_POWER_dBm)
-            return false;
-        float mult = dbm * WIFI_TX_POWER_MULTIPLIER; // Must result integer value
-        float diff = abs(mult - roundf(mult));
-        // Floating point rounding error margin
-        const float epsilon = 0.001f; // Safe for [0, 82] range (ESP32, ESP8266)
-        if (diff > epsilon) return false;
-        return true;
+#ifdef ARDUINO_ARCH_ESP32
+        const float q = dbm * WIFI_TX_POWER_MULTIPLIER;      // dBm -> quarter dBm
+        const int16_t qi = (int16_t)lroundf(q);
+        if (fabsf(q - (float)qi) > 0.001f) return false;     // not on the grid at all
+        for (uint8_t i = 0; i < WIFI_TX_POWER_LEVEL_COUNT; i++) {
+            if (qi == WIFI_TX_POWER_LEVELS_Q[i]) return true;
+        }
+        return false;
+#elif defined (ARDUINO_ARCH_ESP8266)
+        // ESP8266: range check only, the value truncated by setOutputPower()
+        // to the 0.25dBm grid automatically.
+        return (dbm >= MIN_WIFI_TX_POWER_dBm && dbm <= MAX_WIFI_TX_POWER_dBm);
+#else
+        return false;
+#endif
     }
 
     // ------------------------------------------------------------------------

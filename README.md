@@ -11,6 +11,8 @@ Thread-safe Arduino library for network interface configuration management.
 - Hostname with automatic MAC-based fallback (e.g. `ESP-02D6FC`)
 - MAC address management — hardware default and user override
 - Interface priority for fallback scenarios (e.g. ETH → WiFi)
+- WiFi transmit power, validated against what the radio can actually
+  produce (see [API.md](API.md#tx-power))
 - Atomic bulk configuration via `NetworkConfig` / `WiFiConfig` structs
 - JSON serialisation (`toJson()`)
 - Persistent storage via ESP32/ESP8266 `Preferences` library
@@ -217,6 +219,12 @@ on the stack, it also benefits from the reduced `HOST_FQDN_LEN` and
   default.
 - **No heap allocation**: all buffers are fixed-size. The `String` type is not
   used anywhere in the library.
+- **TX power is a set, not a range** (ESP32): the radio supports a dozen
+  discrete levels, so `setTxPower()` refuses a value between two of them
+  rather than snapping to the nearest. The IDF would accept it and quietly
+  step down, which leaves a device transmitting at a power nobody chose and
+  nothing to show for it. On ESP8266 the 0.25 dBm grid is genuine and the
+  whole range is accepted.
 - **DHCP-provided NTP servers**: if a profile has no NTP server configured
   (`isConfiguredNtp()` returns `false`),
   [NetworkManager](https://github.com/soosp/NetworkManager) requests the NTP

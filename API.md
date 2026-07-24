@@ -357,8 +357,10 @@ Extends `NetworkProfile` with WiFi-specific credentials and TX power.
 |`MAX_PASSWORD_SIZE`|64|Password buffer size including null terminator.|
 |`MIN_WIFI_TX_POWER_dBm`|−1.0 (ESP32) / 0.0 (ESP8266)|Minimum TX power in dBm.|
 |`MAX_WIFI_TX_POWER_dBm`|19.5 (ESP32) / 20.5 (ESP8266)|Maximum TX power in dBm.|
-|`WIFI_TX_POWER_STEP_dBm`|0.25|TX power step in dBm.|
-|`WIFI_TX_POWER_MULTIPLIER`|4.0|Converts dBm to platform integer unit. Used by adapters.|
+|`WIFI_TX_POWER_STEP_dBm`|0.25|Size of the radio's power unit in dBm. **Not** the spacing of the selectable values on ESP32 — see [TX power](#tx-power).|
+|`WIFI_TX_POWER_MULTIPLIER`|4.0|Converts dBm to the platform integer unit. Used by adapters.|
+|`WIFI_TX_POWER_LEVELS_Q[]`|see below|**ESP32 only.** The selectable power levels, ascending, in quarter-dBm.|
+|`WIFI_TX_POWER_LEVEL_COUNT`|12 (ESP32)|**ESP32 only.** Number of entries in `WIFI_TX_POWER_LEVELS_Q`.|
 |`DEFAULT_WIFI_TX_POWER_dBm`|19.5 / 20.5|Default TX power (overridable via macro).|
 
 > **`MAX_SSID_LEN` is a macro, not a class constant.** The ESP32 WiFi SDK already
@@ -463,8 +465,36 @@ bool  setTxPower(float dbm);
 ```
 
 `getTxPower()` returns the TX power in dBm, or `NAN` on mutex failure.
-`setTxPower()` validates the value against platform limits and step size before
-storing.
+`setTxPower()` rejects anything the radio cannot actually produce; it never
+adjusts the value to fit.
+
+**The two platforms differ, and a caller building a UI needs to know which it is
+on.** On ESP32 the radio offers a dozen discrete levels and nothing in between;
+a value between two of them is refused, not rounded, because a silently altered
+transmit power is indistinguishable from one that was applied. On ESP8266 the
+0.25 dBm grid is real, and every value in range is accepted.
+
+|Platform|Accepted values|Suitable control|
+|--|--|--|
+|ESP32|The `WIFI_TX_POWER_LEVEL_COUNT` entries of `WIFI_TX_POWER_LEVELS_Q`, in dBm: −1, 2, 5, 7, 8.5, 11, 13, 15, 17, 18.5, 19, 19.5|A drop-down|
+|ESP8266|Any multiple of 0.25 dBm in [`MIN_WIFI_TX_POWER_dBm`, `MAX_WIFI_TX_POWER_dBm`]|A number input with `step="0.25"`|
+
+The ESP32 levels are not written out in the library; they are derived from the
+Arduino core's `wifi_power_t` enum, so a core release that moves a level moves
+this list with it.
+
+> The ESP32 radio itself does not reject an unsupported value — the IDF maps it
+> down to the nearest level below and reports success. That silent step down is
+> exactly what `setTxPower()` exists to catch.
+
+Usage example:
+
+```cpp
+// Preferred: the level is named, so a typo is a compile error rather than a
+// value the radio silently steps down from. The number is never written out,
+// so a core update that moves a level moves this with it.
+cfg.txPower = WIFI_POWER_13dBm * WiFiProfile::WIFI_TX_POWER_STEP_dBm;
+```
 
 ### WiFiProfile bulk configuration
 
@@ -491,8 +521,9 @@ is not restricted (SSID is a binary field per IEEE 802.11).
 **`isValidPassword()`** — accepts empty string (open network). Non-empty
 passwords must be 8–63 printable ASCII characters (0x20–0x7E) per WPA2-PSK.
 
-**`isValidTxPower()`** — checks platform range and that the value is a multiple
-of `WIFI_TX_POWER_STEP_dBm`.
+**`isValidTxPower()`** — on ESP32, tests membership of the supported level set
+(`WIFI_TX_POWER_LEVELS_Q`); on ESP8266, tests the range and the 0.25 dBm grid.
+See [TX power](#tx-power) for why these are different questions.
 
 **`isValidConfig()`** — extends the base `isValidConfig()` with SSID, password,
 and TX power validations.
