@@ -9,6 +9,11 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- Add missing `#include <WiFi.h>` to `WiFiProfile.h` for ESP32. It is needed
+  for resolving `WIFI_POWER_*` macros.
+
 ## [0.4.0] - 2026-07-24
 
 ### Changed

@@ -13,6 +13,7 @@
 
 #if defined(ARDUINO_ARCH_ESP32)
 #  include <esp_mac.h>
+#  include <WiFi.h>
 #elif defined(ARDUINO_ARCH_ESP8266)
 #  include <ESP8266WiFi.h>
 #else
