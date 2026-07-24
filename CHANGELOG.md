@@ -9,6 +9,10 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- Add architecture guard to `WiFiProfile.h`.
+
 ## [0.3.0] - 2026-07-23
 
 ### Added

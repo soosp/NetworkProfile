@@ -15,6 +15,10 @@
 #  include <esp_mac.h>
 #elif defined(ARDUINO_ARCH_ESP8266)
 #  include <ESP8266WiFi.h>
+#else
+#  error "WiFiProfile requires ESP32 or ESP8266. (On AVR the whole class is " \
+         "compiled out by the guard above, so this is a genuinely unsupported " \
+         "architecture — RP2040, STM32 and the like.)"
 #endif
 
 #ifndef WIFI_PROFILE_DEFAULT_WIFI_TX_POWER
