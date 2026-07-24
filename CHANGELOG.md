@@ -9,6 +9,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-24
+
 ### Fixed
 
 - Add missing `#include <WiFi.h>` to `WiFiProfile.h` for ESP32. It is needed
@@ -77,7 +79,8 @@ First public release.
   concurrent reader never sees a half-updated configuration.
 - API reference (`API.md`).
 
-[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.4.0...HEAD
+[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.4.1...HEAD
+[0.4.1]: https://github.com/soosp/NetworkProfile/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/soosp/NetworkProfile/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/soosp/NetworkProfile/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/soosp/NetworkProfile/compare/0.1.0...0.2.0
