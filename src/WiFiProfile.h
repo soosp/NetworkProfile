@@ -603,9 +603,9 @@ protected:
      */
     bool _doSave(Preferences& p) override {
         bool ok = NetworkProfile::_doSave(p);
-        ok &= (_putStr(p, "ssid", _ssid)     > 0);
-        ok &= (_putStr(p, "pass", _password) > 0);
-        ok &= (p.putFloat("txpwr", _txPower) > 0);
+        ok = (_putStr(p, "ssid", _ssid)     > 0) && ok;
+        ok = (_putStr(p, "pass", _password) > 0) && ok;
+        ok = (p.putFloat("txpwr", _txPower) > 0) && ok;
         return ok;
     }
 
@@ -653,9 +653,9 @@ protected:
         char buf[ESC_SIZE + 12];
         snprintf(buf, sizeof(buf), PSTR(",\"ssid\":\"%s\""), escaped);
         bool ok = NetworkProfile::_strncatJson(json, buf, len);
-        snprintf(buf, sizeof(buf), PSTR(",\"txpwr\":%f"), _txPower);
         // Password is intentionally omitted for security
-        ok &= NetworkProfile::_strncatJson(json, buf, len);
+        snprintf(buf, sizeof(buf), PSTR(",\"txpwr\":%f"), _txPower);
+        ok = ok && NetworkProfile::_strncatJson(json, buf, len);
         return ok;
     }
 
