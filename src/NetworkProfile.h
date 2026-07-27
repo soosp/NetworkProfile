@@ -751,6 +751,9 @@ public:
      * 
      * Subclasses may override _doJson() to append interface-specific fields
      * (e.g. WiFiProfile appends "ssid").
+     * 
+     * If output has truncated anywhere it outputs an empty buffer (with `\0`
+     * in json[0]) instead of a malformed JSON stucture.
      *
      * @param json Destination buffer.
      * @param len  Size of destination buffer in bytes.
@@ -818,6 +821,8 @@ public:
 
         _unlock();
 
+        // Empty string instead of a malformed JSON stucture.
+        if (!ok) json[0] = '\0';
         return ok;
     }
 

@@ -11,6 +11,8 @@ and this project adheres to
 
 ### Changed
 
+- If output has truncated anywhere `toJson()` outputs an empty buffer instead
+  of a malformed JSON stucture.
 - refactor: Replace bitwise AND (`&=`) with logical AND (`&&`) to avoid implicit
   bool-to-int conversions and clarify boolean logic intent.
 
