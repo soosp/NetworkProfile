@@ -108,6 +108,28 @@ Selects between the active (user-set) value and the hardware default for
 using MACAddress = uint8_t[MAC_LEN];
 ```
 
+#### `ConfigCheck`
+
+```cpp
+enum class ConfigCheck : uint8_t {
+    Ok = 0,
+    BadHostname,
+    BadIp,
+    BadMask,
+    GatewayOffSubnet,
+    BadDns,
+    BadNtp,
+    BadSsid,        // WiFiProfile only
+    BadPassword,    // WiFiProfile only
+    BadTxPower,     // WiFiProfile only
+};
+```
+
+The result of `checkConfig()`: `Ok`, or the first problem found. `BadIp` covers
+a host address that is unusable (`0.0.0.0/8`, loopback, multicast or reserved)
+or that is the subnet's network or broadcast address. The last three values are
+produced only by `WiFiProfile::checkConfig()`.
+
 ### NetworkConfig struct
 
 Aggregates all profile fields for atomic get/set via `setConfig()` / `getConfig()`.
@@ -322,10 +344,11 @@ pattern.
 ### Static utilities
 
 ```cpp
-static bool macToStr(char* buf, size_t len, const MACAddress mac);
-static bool macFromStr(const char* str, MACAddress mac);
-static bool isValidMac(const MACAddress mac);
-static bool isValidConfig(const NetworkConfig& cfg);
+static bool        macToStr(char* buf, size_t len, const MACAddress mac);
+static bool        macFromStr(const char* str, MACAddress mac);
+static bool        isValidMac(const MACAddress mac);
+static ConfigCheck checkConfig(const NetworkConfig& cfg);
+static bool        isValidConfig(const NetworkConfig& cfg);
 ```
 
 **`macToStr()`** — serialises a MAC address to `"AA:BB:CC:DD:EE:FF"` format
@@ -336,8 +359,17 @@ static bool isValidConfig(const NetworkConfig& cfg);
 **`isValidMac()`** — returns `false` if all bytes are `0x00` (unset) or all
 bytes are `0xFF` (broadcast).
 
-**`isValidConfig()`** — returns `true` if hostname and ntp configuration fields
-are valid.
+**`checkConfig()`** — validates a whole config and returns *which* check failed
+(`ConfigCheck`), or `Ok`. It checks the hostname, the static-addressing block
+(ip / mask / gateway / DNS coherence — only under static addressing, since DHCP
+leaves those fields unused) and the NTP entries. Network-free arithmetic, so it
+runs before the interface is up and works on an isolated segment with no gateway.
+First failure wins.
+
+**`isValidConfig()`** — whole-config validity as a `bool`; a thin wrapper over
+`checkConfig()` (`checkConfig(cfg) == ConfigCheck::Ok`). This is the gate
+`setConfig()` uses, so an incoherent config can never be stored, however a UI
+validated it.
 
 ---
 
@@ -509,10 +541,11 @@ TX power. All WiFi-specific fields are validated before the mutex is acquired.
 ### Static validators
 
 ```cpp
-static bool isValidSsid(const char* ssid);
-static bool isValidPassword(const char* password);
-static bool isValidTxPower(float dbm);
-static bool isValidConfig(const WiFiConfig& cfg);
+static bool        isValidSsid(const char* ssid);
+static bool        isValidPassword(const char* password);
+static bool        isValidTxPower(float dbm);
+static ConfigCheck checkConfig(const WiFiConfig& cfg);
+static bool        isValidConfig(const WiFiConfig& cfg);
 ```
 
 **`isValidSsid()`** — enforces length [1, `MAX_SSID_LEN`]. Character content
@@ -525,8 +558,12 @@ passwords must be 8–63 printable ASCII characters (0x20–0x7E) per WPA2-PSK.
 (`WIFI_TX_POWER_LEVELS_Q`); on ESP8266, tests the range and the 0.25 dBm grid.
 See [TX power](#tx-power) for why these are different questions.
 
-**`isValidConfig()`** — extends the base `isValidConfig()` with SSID, password,
-and TX power validations.
+**`checkConfig()`** — extends the base `checkConfig()` with the SSID, password
+and TX-power checks (`BadSsid` / `BadPassword` / `BadTxPower`), then defers to it
+for the rest. Returns `ConfigCheck`.
+
+**`isValidConfig()`** — whole WiFi-config validity as a `bool`; wraps
+`checkConfig()`.
 
 ---
 

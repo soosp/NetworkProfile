@@ -526,35 +526,51 @@ public:
     }
 
     /**
-     * @brief Makes the base-class overload visible alongside the Wi-Fi one.
+     * @brief Makes the base-class overloads visible alongside the Wi-Fi ones.
      *
-     * Without this, declaring isValidConfig() below would hide every inherited
-     * overload — C++ name lookup stops at the first scope holding the name, so
-     * the parameter types never get to disambiguate across class scopes.
+     * Declaring checkConfig(WiFiConfig) and isValidConfig(WiFiConfig) below
+     * would otherwise hide their inherited NetworkConfig overloads — C++ name
+     * lookup stops at the first scope holding the name, so the parameter types
+     * never get to disambiguate across class scopes. These using-declarations
+     * bring the base overloads back into scope.
      *
-     * It does not make the choice dynamic, though: these are static functions,
+     * They do not make the choice dynamic, though: these are static functions,
      * so a call through a NetworkProfile pointer or reference always selects the
      * base overload at compile time, silently skipping the SSID, password and
      * TX-power checks. Callers holding a base pointer must branch on
      * getInterfaceType() and cast, exactly as they already do for setConfig().
      */
+    using NetworkProfile::checkConfig;
     using NetworkProfile::isValidConfig;
 
     /**
-     * @brief Checks whether hostname, ntp, ssid, password and txPower
-     *        configuration fields are valid.
+     * @brief Validates a whole WiFi config and names the first problem, or Ok.
      *
-     * Called by setConfig() and subclass setConfig() before mutex acquisition.
-     * 
+     * Adds the WiFi-specific checks (ssid, password, txPower) to the base
+     * NetworkProfile::checkConfig(). The detailed counterpart of the bool
+     * isValidConfig(WiFiConfig) wrapper below.
+     *
+     * @param cfg Configuration struct to check.
+     * @return ConfigCheck::Ok, or the first problem found.
+     */
+    static ConfigCheck checkConfig(const WiFiConfig& cfg) {
+        if (!isValidSsid(cfg.ssid))         return ConfigCheck::BadSsid;
+        if (!isValidPassword(cfg.password)) return ConfigCheck::BadPassword;
+        if (!isValidTxPower(cfg.txPower))   return ConfigCheck::BadTxPower;
+        return NetworkProfile::checkConfig(cfg);
+    }
+
+    /**
+     * @brief Whole WiFi-config validity as a bool.
+     *
+     * The storability gate used by setConfig(); a thin wrapper over
+     * checkConfig(). Called before mutex acquisition.
+     *
      * @param cfg Configuration struct to check.
      * @return true if all checks passed, false otherwise.
      */
     static bool isValidConfig(const WiFiConfig& cfg) {
-        if (!isValidSsid(cfg.ssid))              return false;
-        if (!isValidPassword(cfg.password))      return false;
-        if (!isValidTxPower(cfg.txPower))        return false;
-        if (!NetworkProfile::isValidConfig(cfg)) return false;
-        return true;
+        return checkConfig(cfg) == ConfigCheck::Ok;
     }
 
 protected:

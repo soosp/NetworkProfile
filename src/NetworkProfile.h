@@ -678,6 +678,78 @@ public:
         return !allZero && !allFF;
     }
 
+    /**
+     * @brief Result of checkStatic(): the first coherence problem, or Ok.
+     */
+    enum class ConfigCheck : uint8_t {
+        Ok = 0,             ///< the config is valid
+        BadHostname,        ///< hostname is set but is not a valid hostname
+        BadIp,              ///< host ip is unusable (0/loopback/multicast/reserved) or the subnet network/broadcast address
+        BadMask,            ///< mask is not a contiguous run of 1-bits
+        GatewayOffSubnet,   ///< a non-zero gateway is not on the ip/mask subnet
+        BadDns,             ///< a DNS entry is set but not a usable unicast address
+        BadNtp,             ///< an NTP entry is neither a usable unicast IP nor an FQDN
+        BadSsid,            ///< (WiFiProfile) ssid is empty or too long
+        BadPassword,        ///< (WiFiProfile) password fails the WPA length rules
+        BadTxPower,         ///< (WiFiProfile) txPower is not an allowed level
+    };
+
+private:
+    /// The address as a plain 32-bit value, most-significant octet first. Not
+    /// IPAddress::operator uint32_t(), which is endianness-dependent and would
+    /// make a valid mask look non-contiguous on a little-endian MCU.
+    static uint32_t ipU32(const IPAddress& x) {
+        return ((uint32_t)x[0] << 24) | ((uint32_t)x[1] << 16)
+             | ((uint32_t)x[2] <<  8) |  (uint32_t)x[3];
+    }
+
+    /// Whether @p a could be a real unicast host/DNS/gateway/NTP address on an
+    /// ESP interface. Rejects the ranges that never can be: 0.0.0.0/8
+    /// (this-network), 127.0.0.0/8 (loopback — an ESP runs no local services),
+    /// 224.0.0.0/4 (multicast) and 240.0.0.0/4 (reserved, which also covers the
+    /// 255.255.255.255 limited broadcast).
+    static bool isUnicastHost(uint32_t a) {
+        if ((a & 0xFF000000u) == 0x00000000u) return false; // 0/8
+        if ((a & 0xFF000000u) == 0x7F000000u) return false; // 127/8
+        if ((a & 0xF0000000u) == 0xE0000000u) return false; // 224/4
+        if ((a & 0xF0000000u) == 0xF0000000u) return false; // 240/4
+        return true;
+    }
+
+    /// Coherence of the static-addressing block (ip, mask, gateway, DNS). Pure
+    /// arithmetic, so it runs before the radio is up and works on an isolated
+    /// segment with no gateway. Optional fields (gateway, DNS) are skipped when
+    /// 0.0.0.0 (= not set); a non-zero value must be valid. Called by
+    /// checkConfig() under static addressing.
+    static ConfigCheck checkStatic(const NetworkConfig& cfg) {
+        const uint32_t a = ipU32(cfg.ip);
+        const uint32_t m = ipU32(cfg.mask);
+        // A usable netmask is a non-empty, contiguous run of 1-bits then 0-bits:
+        // for host mask h = ~m, h and h+1 share no bits.
+        if (m == 0) return ConfigCheck::BadMask;
+        const uint32_t host = ~m;
+        if (host & (host + 1)) return ConfigCheck::BadMask;
+        // The host address must be a usable unicast, and not the subnet's
+        // network or broadcast address. /31 and /32 have no net/broadcast.
+        if (!isUnicastHost(a)) return ConfigCheck::BadIp;
+        if (host != 0 && host != 1) {
+            const uint32_t h = a & host;
+            if (h == 0 || h == host) return ConfigCheck::BadIp;
+        }
+        // A gateway, if given, must sit on the same subnet as the host.
+        const uint32_t g = ipU32(cfg.gateway);
+        if (g != 0 && ((g & m) != (a & m))) return ConfigCheck::GatewayOffSubnet;
+        // DNS servers, if given, must be usable unicast addresses. They may be
+        // off-subnet (a remote resolver), so there is no subnet test.
+        for (uint8_t i = 0; i < DNS_SERVER_COUNT; i++) {
+            const uint32_t d = ipU32(cfg.dns[i]);
+            if (d != 0 && !isUnicastHost(d)) return ConfigCheck::BadDns;
+        }
+        return ConfigCheck::Ok;
+    }
+
+public:
+
     // ------------------------------------------------------------------------
     // Atomic bulk configuration
     // ------------------------------------------------------------------------
@@ -718,23 +790,52 @@ public:
     }
 
     /**
-     * @brief Checks whether hostname and ntp configuration fields are valid.
+     * @brief Validates a whole config and names the first problem, or Ok.
      *
-     * Called by setConfig() and subclass setConfig() before mutex acquisition.
-     * 
-     * @param cfg Configuration struct to check.
-     * @return true if all checks passed, false otherwise.
+     * The detailed counterpart of isValidConfig(): identical checks, but it
+     * returns *which* one failed so a caller can explain it. Static coherence is
+     * checked only under static addressing; DHCP leaves ip/mask/gateway unused.
+     * First failure wins.
+     *
+     * @param cfg Config to validate.
+     * @return ConfigCheck::Ok, or the first problem found.
      */
-    static bool isValidConfig(const NetworkConfig& cfg) {
-        if (cfg.hostname[0] != '\0' && !isValidHostname(cfg.hostname)) return false;
+    static ConfigCheck checkConfig(const NetworkConfig& cfg) {
+        if (cfg.hostname[0] != '\0' && !isValidHostname(cfg.hostname))
+            return ConfigCheck::BadHostname;
+        // Static addressing must be coherent. Skipped under DHCP, where the
+        // ip/mask/gateway/dns fields are unused.
+        if (!cfg.dhcp) {
+            ConfigCheck s = checkStatic(cfg);
+            if (s != ConfigCheck::Ok) return s;
+        }
 #if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
+        // An NTP entry, if set, is either a usable unicast IP or an FQDN. The
+        // ip parse is String-free (Host::parseIp fills octets).
         for (uint8_t i = 0; i < NTP_SERVER_COUNT; i++) {
-            if (cfg.ntp[i][0] != '\0'
-                && !Host::isValidIp(cfg.ntp[i])
-                && !Host::isValidFqdn(cfg.ntp[i])) return false;
+            if (cfg.ntp[i][0] == '\0') continue;
+            uint8_t oct[4];
+            if (Host::parseIp(cfg.ntp[i], oct)) {
+                const uint32_t u = ((uint32_t)oct[0] << 24) | ((uint32_t)oct[1] << 16)
+                                 | ((uint32_t)oct[2] <<  8) |  (uint32_t)oct[3];
+                if (!isUnicastHost(u)) return ConfigCheck::BadNtp;
+            } else if (!Host::isValidFqdn(cfg.ntp[i])) {
+                return ConfigCheck::BadNtp;
+            }
         }
 #endif
-        return true;
+        return ConfigCheck::Ok;
+    }
+
+    /**
+     * @brief Whole-config validity as a bool.
+     *
+     * The storability gate used by setConfig(); a thin wrapper over checkConfig()
+     * kept for the many callers that only need yes/no. Making it authoritative
+     * means an invalid config can never be stored, however the UI validated it.
+     */
+    static bool isValidConfig(const NetworkConfig& cfg) {
+        return checkConfig(cfg) == ConfigCheck::Ok;
     }
 
     // ------------------------------------------------------------------------

@@ -9,8 +9,26 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `checkConfig()` on `NetworkProfile` and `WiFiProfile` — validates a whole
+  config and returns *which* check failed as a `ConfigCheck`, rather than a bare
+  `bool`. `NetworkProfile::checkConfig()` covers the hostname, the static
+  addressing block (ip / mask / gateway / DNS coherence, checked only under
+  static addressing) and the NTP entries; `WiFiProfile::checkConfig()` adds SSID,
+  password and TX power. `isValidConfig()` is now a thin `bool` wrapper over it.
+- `ConfigCheck` enum naming the specific validation result.
+
 ### Changed
 
+- **Breaking (behaviour):** `setConfig()` / `isValidConfig()` now reject a static
+  config that is not internally coherent — a host ip that is unusable
+  (`0.0.0.0/8`, loopback, multicast or reserved) or is the subnet network or
+  broadcast address; a non-contiguous or empty mask; a gateway off the configured
+  subnet; or a DNS/NTP address in one of those unusable ranges. A gateway or DNS
+  of `0.0.0.0` means "not set" and is accepted, so an isolated segment with no
+  default route is valid. Configs previously stored with these mistakes are now
+  refused.
 - If output has truncated anywhere `toJson()` outputs an empty buffer instead
   of a malformed JSON stucture.
 - refactor: Replace bitwise AND (`&=`) with logical AND (`&&`) to avoid implicit
