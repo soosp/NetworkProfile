@@ -9,6 +9,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-31
+
 ### Added
 
 - `ipToStr()` — public helper that serialises an `IPAddress` to `"a.b.c.d"`, or
@@ -118,7 +120,8 @@ First public release.
   concurrent reader never sees a half-updated configuration.
 - API reference (`API.md`).
 
-[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.5.0...HEAD
+[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.5.1...HEAD
+[0.5.1]: https://github.com/soosp/NetworkProfile/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/soosp/NetworkProfile/compare/0.4.1...0.5.0
 [0.4.1]: https://github.com/soosp/NetworkProfile/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/soosp/NetworkProfile/compare/0.3.0...0.4.0
