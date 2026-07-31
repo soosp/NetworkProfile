@@ -884,52 +884,53 @@ public:
         constexpr size_t BS = 80;
         char buf[BS];
         char macBuf[MAC_STR_SIZE];
+        char ipStr[16];
         bool ok = true;
 
         json[0] = '\0';
         if (!_lock()) return false;
         ok = ok && _strncatJson(json, PSTR("{"), len);
         // DHCP
-        snprintf(buf, BS, PSTR("\"dhcp\":%u"), (unsigned)_dhcp);
+        ok = ok && (snprintf(buf, BS, PSTR("\"dhcp\":%u"), (unsigned)_dhcp) < BS);
         ok = ok && _strncatJson(json, buf, len);
         if (!_dhcp) {
             // IP address
-            snprintf(buf, BS, PSTR(",\"ip\":\"%d.%d.%d.%d\""),
-                _ip[0], _ip[1], _ip[2], _ip[3]);
+            ok = ok && ipToStr(ipStr, sizeof(ipStr), _ip);
+            ok = ok && (snprintf(buf, BS, PSTR(",\"ip\":\"%s\""), ipStr) < BS);
             ok = ok && _strncatJson(json, buf, len);
             // Netmask
-            snprintf(buf, BS, PSTR(",\"mask\":\"%d.%d.%d.%d\""),
-                _mask[0], _mask[1], _mask[2], _mask[3]);
+            ok = ok && ipToStr(ipStr, sizeof(ipStr), _mask);
+            ok = ok && (snprintf(buf, BS, PSTR(",\"mask\":\"%s\""), ipStr) < BS);
             ok = ok && _strncatJson(json, buf, len);
             // Default gateway
-            snprintf(buf, BS, PSTR(",\"gw\":\"%d.%d.%d.%d\""),
-                _gateway[0], _gateway[1], _gateway[2], _gateway[3]);
+            ok = ok && ipToStr(ipStr, sizeof(ipStr), _gateway);
+            ok = ok && (snprintf(buf, BS, PSTR(",\"gw\":\"%s\""), ipStr) < BS);
             ok = ok && _strncatJson(json, buf, len);
             // DNS servers
             for (uint8_t i = 0; i < DNS_SERVER_COUNT; i++) {
-                snprintf(buf, BS, PSTR(",\"dns%u\":\"%d.%d.%d.%d\""),
-                    i, _dns[i][0], _dns[i][1], _dns[i][2], _dns[i][3]);
+                ok = ok && ipToStr(ipStr, sizeof(ipStr), _dns[i]);
+                ok = ok && (snprintf(buf, BS, PSTR(",\"dns%u\":\"%s\""), i, ipStr) < BS);
                 ok = ok && _strncatJson(json, buf, len);
             }
         }
         // Hostname
-        snprintf(buf, BS, PSTR(",\"host\":\"%s\""),
-            _hostname[0] != '\0' ? _hostname : _hostnameDefault);
+        ok = ok && (snprintf(buf, BS, PSTR(",\"host\":\"%s\""),
+            _hostname[0] != '\0' ? _hostname : _hostnameDefault) < BS);
         ok = ok && _strncatJson(json, buf, len);
         // Interface priority
-        snprintf(buf, BS, PSTR(",\"prio\":%u"), (unsigned)_priority);
+        ok = ok && (snprintf(buf, BS, PSTR(",\"prio\":%u"), (unsigned)_priority) < BS);
         ok = ok && _strncatJson(json, buf, len);
 
         // Active MAC — override if valid, otherwise default
         const uint8_t* macSrc = isValidMac(_mac) ? _mac : _macDefault;
-        macToStr(macBuf, sizeof(macBuf), macSrc);
-        snprintf(buf, BS, PSTR(",\"mac\":\"%s\""), macBuf);
+        ok = ok && macToStr(macBuf, sizeof(macBuf), macSrc);
+        ok = ok && (snprintf(buf, BS, PSTR(",\"mac\":\"%s\""), macBuf) < BS);
         ok = ok && _strncatJson(json, buf, len);
 
 #if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
         for (uint8_t i = 0; i < NTP_SERVER_COUNT; i++) {
             char ntpKey[Host::MAX_FQDN_SIZE + 12];
-            snprintf(ntpKey, sizeof(ntpKey), PSTR(",\"ntp%u\":\"%s\""), i, _ntp[i]);
+            ok = ok && (snprintf(ntpKey, sizeof(ntpKey), PSTR(",\"ntp%u\":\"%s\""), i, _ntp[i]) < sizeof(ntpKey));
             ok = ok && _strncatJson(json, ntpKey, len);
         }
 #endif

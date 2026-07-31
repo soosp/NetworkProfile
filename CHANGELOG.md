@@ -14,6 +14,13 @@ and this project adheres to
 - `ipToStr()` — public helper that serialises an `IPAddress` to `"a.b.c.d"`, or
   to an empty string when it is `0.0.0.0` (unset), and reports truncation.
 
+### Fixed
+
+- `toJson()` now serialises an unset optional address (a gateway or DNS server
+  left at `0.0.0.0`) as an empty string rather than `"0.0.0.0"`, so a field the
+  user cleared round-trips to the form blank instead of reappearing as
+  `"0.0.0.0"` after a reboot.
+
 ## [0.5.0] - 2026-07-30
 
 ### Added
