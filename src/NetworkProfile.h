@@ -679,6 +679,24 @@ public:
     }
 
     /**
+     * @brief A little helper to convert an IPAddress to the provided string buffer.
+     * @param str  Destination string buffer.
+     * @param len  Size of destination buffer.
+     * @param ip   Source IP address.
+     * @return true on success, false otherwise.
+     */
+    static bool ipToStr(char* str, size_t len, const IPAddress ip) {
+        if (!str || len == 0) return false;
+        if (ip == IPAddress()) {
+            str[0] = '\0';
+            return true;
+        }
+        int written = snprintf(str, len, PSTR("%d.%d.%d.%d"), ip[0], ip[1], ip[2], ip[3]);
+        if (written < 0 || (size_t)written >= len) return false;
+        return true;
+    }
+
+    /**
      * @brief Result of checkStatic(): the first coherence problem, or Ok.
      */
     enum class ConfigCheck : uint8_t {

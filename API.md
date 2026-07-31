@@ -347,6 +347,7 @@ pattern.
 static bool        macToStr(char* buf, size_t len, const MACAddress mac);
 static bool        macFromStr(const char* str, MACAddress mac);
 static bool        isValidMac(const MACAddress mac);
+static bool        ipToStr(char* str, size_t len, const IPAddress ip);
 static ConfigCheck checkConfig(const NetworkConfig& cfg);
 static bool        isValidConfig(const NetworkConfig& cfg);
 ```
@@ -358,6 +359,11 @@ static bool        isValidConfig(const NetworkConfig& cfg);
 
 **`isValidMac()`** — returns `false` if all bytes are `0x00` (unset) or all
 bytes are `0xFF` (broadcast).
+
+**`ipToStr()`** — serialises an address to `"a.b.c.d"`, or to an empty string
+when it is `0.0.0.0` (unset), so a cleared optional field (gateway, DNS)
+round-trips to a form as blank rather than `"0.0.0.0"`. Returns `false` on
+truncation.
 
 **`checkConfig()`** — validates a whole config and returns *which* check failed
 (`ConfigCheck`), or `Ok`. It checks the hostname, the static-addressing block

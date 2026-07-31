@@ -9,6 +9,11 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `ipToStr()` — public helper that serialises an `IPAddress` to `"a.b.c.d"`, or
+  to an empty string when it is `0.0.0.0` (unset), and reports truncation.
+
 ## [0.5.0] - 2026-07-30
 
 ### Added
