@@ -1,0 +1,112 @@
+#pragma once
+
+/**
+ * @file json_tools.h
+ * @brief Internal helpers shared by the JSON builders in NetworkProfile and
+ *        NetworkManager.
+ *
+ * This file is an internal implementation detail — do not include directly
+ * from application code.
+ *
+ * Two things live here. First, a truncation check for the snprintf() family.
+ * Second, bounded append functions, in two flavours that differ in what they do
+ * when the text does not fit:
+ *
+ *   - json_cat()       appends what fits, then reports failure (truncating);
+ *   - json_catAtomic() writes nothing at all, and reports failure.
+ *
+ * Both behaviours were already in use — NetworkProfile::toJson() built its
+ * document with the truncating one, NetworkManager::statusToJson() with the
+ * atomic one — so both are kept rather than silently unified: a caller that
+ * expects an unchanged buffer on failure must not get a half-written one.
+ *
+ * Every function comes in a plain and a `_P` variant. The split is deliberate:
+ * a `const char*` does not say which address space it points into, so the call
+ * site, not the callee, states where the source lives. Handing program space to
+ * a RAM function reads flash byte by byte, which faults on ESP8266 and AVR.
+ */
+
+#include <Arduino.h>
+#include <string.h>
+
+/**
+ * @brief Did an snprintf()-family call write its whole string?
+ *
+ * snprintf() returns an int: negative on an encoding error, otherwise the length
+ * the output *would* have needed — so a value at or above the buffer size means
+ * it was truncated. Comparing that int against a size_t directly is a signed/
+ * unsigned comparison, and a negative result would wrap into a huge unsigned
+ * value; this keeps the two failure modes explicit.
+ *
+ * @param written Return value of the snprintf() call.
+ * @param bufSize Size of the destination buffer.
+ * @return @c true if the whole string fit.
+ */
+inline bool json_fitted(int written, size_t bufSize) {
+    return written >= 0 && static_cast<size_t>(written) < bufSize;
+}
+
+/**
+ * @brief Appends @p src to @p dst, truncating at @p dstSize if it does not fit.
+ * @param dst     Destination string in RAM (null-terminated).
+ * @param src     String to append, in RAM.
+ * @param dstSize Total capacity of @p dst in bytes.
+ * @return @c true if all of @p src fit, @c false if the output was truncated.
+ */
+inline bool json_cat(char* dst, const char* src, size_t dstSize) {
+    const size_t cur = strlen(dst);
+    const size_t remaining = (cur < dstSize) ? (dstSize - cur - 1) : 0;
+    if (remaining == 0) return false;
+    const size_t toAppend = strlen(src);
+    strncat(dst, src, remaining);
+    return toAppend <= remaining;
+}
+
+/**
+ * @brief Program-space counterpart of json_cat().
+ * @param dst     Destination string in RAM (null-terminated).
+ * @param src     String to append, in program space (PSTR/PROGMEM).
+ * @param dstSize Total capacity of @p dst in bytes.
+ * @return @c true if all of @p src fit, @c false if the output was truncated.
+ */
+inline bool json_cat_P(char* dst, PGM_P src, size_t dstSize) {
+    const size_t cur = strlen(dst);
+    const size_t remaining = (cur < dstSize) ? (dstSize - cur - 1) : 0;
+    if (remaining == 0) return false;
+    const size_t toAppend = strlen_P(src);
+    strncat_P(dst, src, remaining);
+    return toAppend <= remaining;
+}
+
+/**
+ * @brief Appends @p src to @p dst only if all of it fits; otherwise leaves
+ *        @p dst untouched.
+ * @param dst     Destination string in RAM (null-terminated).
+ * @param src     String to append, in RAM.
+ * @param dstSize Total capacity of @p dst in bytes.
+ * @return @c true if appended, @c false if it would not fit (nothing written).
+ */
+inline bool json_catAtomic(char* dst, const char* src, size_t dstSize) {
+    const size_t cur = strlen(dst);
+    if (cur >= dstSize) return false;
+    const size_t n = strlen(src);
+    if (n + 1 > dstSize - cur) return false;   // no room for src + NUL
+    memcpy(dst + cur, src, n + 1);
+    return true;
+}
+
+/**
+ * @brief Program-space counterpart of json_catAtomic().
+ * @param dst     Destination string in RAM (null-terminated).
+ * @param src     String to append, in program space (PSTR/PROGMEM).
+ * @param dstSize Total capacity of @p dst in bytes.
+ * @return @c true if appended, @c false if it would not fit (nothing written).
+ */
+inline bool json_catAtomic_P(char* dst, PGM_P src, size_t dstSize) {
+    const size_t cur = strlen(dst);
+    if (cur >= dstSize) return false;
+    const size_t n = strlen_P(src);
+    if (n + 1 > dstSize - cur) return false;   // no room for src + NUL
+    memcpy_P(dst + cur, src, n + 1);
+    return true;
+}

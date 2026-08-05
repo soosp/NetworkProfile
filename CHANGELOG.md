@@ -9,6 +9,40 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- JSON serialisation no longer crashes on ESP8266 and AVR. `toJson()` passed
+  `PSTR()` literals to `_strncatJson()` and `snprintf()`, which read their source
+  from RAM: on a platform where program space is a separate address space, that
+  reads flash byte by byte and faults (exception 3 / `LoadStoreError` on
+  ESP8266). The `PSTR()` format strings now go to `snprintf_P()`, and program-space
+  fragments to a new `_strncatJson_P()`. ESP32 was unaffected, its flash being
+  memory-mapped.
+- `WiFiProfile::_doJson()` had the same defect in the `ssid` and `txpwr` fields.
+- `toJson()` compared `snprintf()`'s `int` result against a `size_t` buffer size,
+  which warns under `-Wsign-compare` and would convert a negative return (an
+  encoding error) into a huge unsigned value. The check now goes through
+  `_fitted()`, which treats a negative result and an overlong one as separate,
+  explicit cases.
+- `WiFiProfile::_doJson()` did not check for truncation at all: an over-long SSID
+  field was silently cut instead of reporting failure.
+
+### Added
+
+- `_strncatJson_P()` — the program-space counterpart of `_strncatJson()`. The two
+  are kept separate on purpose: a `const char*` does not say which address space
+  it points into, so the call site, not the helper, states where the source
+  lives. Mixing them is what the fix above was about.
+- `_fitted()` — reports whether an `snprintf()`-family call wrote its whole
+  string, keeping the negative-return and truncation cases apart.
+- `detail/json_tools.h` — internal header holding the JSON append and truncation
+  helpers, so `NetworkManager` can share them instead of keeping a second copy.
+  It offers both append behaviours under distinct names, because the two builders
+  genuinely differ: `json_cat()` appends what fits and reports truncation, while
+  `json_catAtomic()` writes nothing when the text would not fit. Each has a `_P`
+  variant for program-space sources. `NetworkProfile`'s own helpers stay as thin
+  wrappers, so subclasses and existing call sites are unaffected.
+
 ## [0.5.1] - 2026-07-31
 
 ### Added

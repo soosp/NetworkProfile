@@ -11,6 +11,7 @@
 #include <Arduino.h>
 #include <IPAddress.h>
 #include "Host.h"
+#include "detail/json_tools.h"
 
 #if defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_ESP8266)
 #  include <Preferences.h>
@@ -616,7 +617,7 @@ public:
      */
     static bool macToStr(char* buf, size_t len, const MACAddress mac) {
         if (!buf || len < MAC_STR_SIZE) return false;
-        snprintf(buf, len, PSTR("%02X:%02X:%02X:%02X:%02X:%02X"),
+        snprintf_P(buf, len, PSTR("%02X:%02X:%02X:%02X:%02X:%02X"),
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         return true;
     }
@@ -691,7 +692,7 @@ public:
             str[0] = '\0';
             return true;
         }
-        int written = snprintf(str, len, PSTR("%d.%d.%d.%d"), ip[0], ip[1], ip[2], ip[3]);
+        int written = snprintf_P(str, len, PSTR("%d.%d.%d.%d"), ip[0], ip[1], ip[2], ip[3]);
         if (written < 0 || (size_t)written >= len) return false;
         return true;
     }
@@ -889,55 +890,55 @@ public:
 
         json[0] = '\0';
         if (!_lock()) return false;
-        ok = ok && _strncatJson(json, PSTR("{"), len);
+        ok = ok && _strncatJson_P(json, PSTR("{"), len);
         // DHCP
-        ok = ok && (snprintf(buf, BS, PSTR("\"dhcp\":%u"), (unsigned)_dhcp) < BS);
+        ok = ok && _fitted(snprintf_P(buf, BS, PSTR("\"dhcp\":%u"), (unsigned)_dhcp), BS);
         ok = ok && _strncatJson(json, buf, len);
         if (!_dhcp) {
             // IP address
             ok = ok && ipToStr(ipStr, sizeof(ipStr), _ip);
-            ok = ok && (snprintf(buf, BS, PSTR(",\"ip\":\"%s\""), ipStr) < BS);
+            ok = ok && _fitted(snprintf_P(buf, BS, PSTR(",\"ip\":\"%s\""), ipStr), BS);
             ok = ok && _strncatJson(json, buf, len);
             // Netmask
             ok = ok && ipToStr(ipStr, sizeof(ipStr), _mask);
-            ok = ok && (snprintf(buf, BS, PSTR(",\"mask\":\"%s\""), ipStr) < BS);
+            ok = ok && _fitted(snprintf_P(buf, BS, PSTR(",\"mask\":\"%s\""), ipStr), BS);
             ok = ok && _strncatJson(json, buf, len);
             // Default gateway
             ok = ok && ipToStr(ipStr, sizeof(ipStr), _gateway);
-            ok = ok && (snprintf(buf, BS, PSTR(",\"gw\":\"%s\""), ipStr) < BS);
+            ok = ok && _fitted(snprintf_P(buf, BS, PSTR(",\"gw\":\"%s\""), ipStr), BS);
             ok = ok && _strncatJson(json, buf, len);
             // DNS servers
             for (uint8_t i = 0; i < DNS_SERVER_COUNT; i++) {
                 ok = ok && ipToStr(ipStr, sizeof(ipStr), _dns[i]);
-                ok = ok && (snprintf(buf, BS, PSTR(",\"dns%u\":\"%s\""), i, ipStr) < BS);
+                ok = ok && _fitted(snprintf_P(buf, BS, PSTR(",\"dns%u\":\"%s\""), i, ipStr), BS);
                 ok = ok && _strncatJson(json, buf, len);
             }
         }
         // Hostname
-        ok = ok && (snprintf(buf, BS, PSTR(",\"host\":\"%s\""),
-            _hostname[0] != '\0' ? _hostname : _hostnameDefault) < BS);
+        ok = ok && _fitted(snprintf_P(buf, BS, PSTR(",\"host\":\"%s\""),
+            _hostname[0] != '\0' ? _hostname : _hostnameDefault), BS);
         ok = ok && _strncatJson(json, buf, len);
         // Interface priority
-        ok = ok && (snprintf(buf, BS, PSTR(",\"prio\":%u"), (unsigned)_priority) < BS);
+        ok = ok && _fitted(snprintf_P(buf, BS, PSTR(",\"prio\":%u"), (unsigned)_priority), BS);
         ok = ok && _strncatJson(json, buf, len);
 
         // Active MAC — override if valid, otherwise default
         const uint8_t* macSrc = isValidMac(_mac) ? _mac : _macDefault;
         ok = ok && macToStr(macBuf, sizeof(macBuf), macSrc);
-        ok = ok && (snprintf(buf, BS, PSTR(",\"mac\":\"%s\""), macBuf) < BS);
+        ok = ok && _fitted(snprintf_P(buf, BS, PSTR(",\"mac\":\"%s\""), macBuf), BS);
         ok = ok && _strncatJson(json, buf, len);
 
 #if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
         for (uint8_t i = 0; i < NTP_SERVER_COUNT; i++) {
             char ntpKey[Host::MAX_FQDN_SIZE + 12];
-            ok = ok && (snprintf(ntpKey, sizeof(ntpKey), PSTR(",\"ntp%u\":\"%s\""), i, _ntp[i]) < sizeof(ntpKey));
+            ok = ok && _fitted(snprintf_P(ntpKey, sizeof(ntpKey), PSTR(",\"ntp%u\":\"%s\""), i, _ntp[i]), sizeof(ntpKey));
             ok = ok && _strncatJson(json, ntpKey, len);
         }
 #endif
 
         // JSON serialization hook for childs
         ok = ok && _doJson(json, len);
-        ok = ok && _strncatJson(json, PSTR("}"), len);
+        ok = ok && _strncatJson_P(json, PSTR("}"), len);
 
         _unlock();
 
@@ -1282,16 +1283,43 @@ protected:
 
     /**
      * @brief Appends @p buffer to @p json without exceeding @p jsonLen bytes.
-     * @return true on success, false if output was truncated.
+     *
+     * Thin wrapper over json_cat() (detail/json_tools.h), kept so subclasses and
+     * existing call sites are unaffected by the helpers moving to a header
+     * shared with NetworkManager.
+     *
+     * @param json     Destination JSON string in RAM (null-terminated).
+     * @param buffer   String to append, in RAM.
+     * @param jsonLen  Total capacity of @p json in bytes.
+     * @return @c true on success, @c false if the output was truncated.
      */
     static bool _strncatJson(char* json, const char* buffer, size_t jsonLen) {
-        size_t remaining = (strlen(json) < jsonLen)
-                        ? (jsonLen - strlen(json) - 1)
-                        : 0;
-        if (remaining == 0) return false;
-        size_t toAppend = strlen(buffer);
-        strncat(json, buffer, remaining);
-        return toAppend <= remaining;
+        return json_cat(json, buffer, jsonLen);
+    }
+
+    /**
+     * @brief Program-space counterpart of _strncatJson().
+     *
+     * @param json     Destination JSON string in RAM (null-terminated).
+     * @param buffer   String to append, in program space (PSTR/PROGMEM).
+     * @param jsonLen  Total capacity of @p json in bytes.
+     * @return @c true on success, @c false if the output was truncated.
+     */
+    static bool _strncatJson_P(char* json, PGM_P buffer, size_t jsonLen) {
+        return json_cat_P(json, buffer, jsonLen);
+    }
+
+    /**
+     * @brief Did an snprintf()-family call write the whole string?
+     *
+     * Thin wrapper over json_fitted() (detail/json_tools.h).
+     *
+     * @param written Return value of the snprintf() call.
+     * @param bufSize Size of the destination buffer.
+     * @return @c true if the whole string fit.
+     */
+    static bool _fitted(int written, size_t bufSize) {
+        return json_fitted(written, bufSize);
     }
 
     /**

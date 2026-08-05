@@ -667,10 +667,12 @@ protected:
         _jsonEscapeStr(escaped, sizeof(escaped), _ssid);
         // +12 for: ,"ssid":"" and null terminator
         char buf[ESC_SIZE + 12];
-        snprintf(buf, sizeof(buf), PSTR(",\"ssid\":\"%s\""), escaped);
-        bool ok = NetworkProfile::_strncatJson(json, buf, len);
+        bool ok = _fitted(snprintf_P(buf, sizeof(buf), PSTR(",\"ssid\":\"%s\""),
+                                     escaped), sizeof(buf));
+        ok = ok && NetworkProfile::_strncatJson(json, buf, len);
         // Password is intentionally omitted for security
-        snprintf(buf, sizeof(buf), PSTR(",\"txpwr\":%f"), _txPower);
+        ok = ok && _fitted(snprintf_P(buf, sizeof(buf), PSTR(",\"txpwr\":%f"),
+                                      _txPower), sizeof(buf));
         ok = ok && NetworkProfile::_strncatJson(json, buf, len);
         return ok;
     }
