@@ -9,6 +9,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-08-05
+
 ### Changed
 
 - The JSON string escaper moved to `detail/json_tools.h` as `json_escape()`, so
@@ -163,7 +165,8 @@ First public release.
   concurrent reader never sees a half-updated configuration.
 - API reference (`API.md`).
 
-[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.5.2...HEAD
+[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.5.3...HEAD
+[0.5.3]: https://github.com/soosp/NetworkProfile/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/soosp/NetworkProfile/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/soosp/NetworkProfile/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/soosp/NetworkProfile/compare/0.4.1...0.5.0
