@@ -9,6 +9,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- The JSON string escaper moved to `detail/json_tools.h` as `json_escape()`, so
+  `NetworkManager` can use it too — a Wi-Fi SSID is arbitrary bytes, and it is
+  now escaped by one implementation whether it comes from the stored profile or
+  from the live link. `_jsonEscapeStr()` stays as a thin wrapper.
+
 ## [0.5.2] - 2026-08-05
 
 ### Fixed

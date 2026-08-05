@@ -1336,22 +1336,7 @@ protected:
      * @return Number of bytes written to @p dst, excluding null terminator.
      */
     static size_t _jsonEscapeStr(char* dst, size_t dstLen, const char* src) {
-        if (!dst || !src || dstLen == 0) return 0;
-        size_t written = 0;
-        while (*src && written + 1 < dstLen) {
-            unsigned char c = (unsigned char)*src++;
-            if (c >= 0x20 && c <= 0x7E && c != '"' && c != '\\') {
-                // Printable ASCII — copy directly
-                dst[written++] = c;
-            } else {
-                // Non-printable or JSON special character — \uXXXX escape
-                if (written + 6 >= dstLen) break;
-                written += snprintf(dst + written, dstLen - written,
-                                    "\\u%04X", c);
-            }
-        }
-        dst[written] = '\0';
-        return written;
+        return json_escape(dst, dstLen, src);   // detail/json_tools.h
     }
 
     // ------------------------------------------------------------------------

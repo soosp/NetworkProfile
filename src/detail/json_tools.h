@@ -110,3 +110,35 @@ inline bool json_catAtomic_P(char* dst, PGM_P src, size_t dstSize) {
     memcpy_P(dst + cur, src, n + 1);
     return true;
 }
+
+/**
+ * @brief Escapes @p src into @p dst so it can go inside a JSON string.
+ *
+ * Printable ASCII is copied through; the quote, the backslash and everything
+ * outside 0x20..0x7E become \uXXXX escapes (RFC 8259). Truncates rather than
+ * overrunning, and never leaves a half-written escape.
+ *
+ * Shared because more than one builder needs it: a Wi-Fi SSID is arbitrary
+ * bytes, so both the stored profile and the live link status must escape it, and
+ * two implementations of that would be two chances to emit invalid JSON.
+ *
+ * @param dst    Destination buffer.
+ * @param dstLen Size of @p dst in bytes.
+ * @param src    Null-terminated source string.
+ * @return Bytes written to @p dst, excluding the null terminator.
+ */
+inline size_t json_escape(char* dst, size_t dstLen, const char* src) {
+    if (!dst || !src || dstLen == 0) return 0;
+    size_t written = 0;
+    while (*src && written + 1 < dstLen) {
+        unsigned char c = (unsigned char)*src++;
+        if (c >= 0x20 && c <= 0x7E && c != '"' && c != '\\') {
+            dst[written++] = c;                       // printable ASCII
+        } else {
+            if (written + 6 >= dstLen) break;         // no room for \uXXXX
+            written += snprintf(dst + written, dstLen - written, "\\u%04X", c);
+        }
+    }
+    dst[written] = '\0';
+    return written;
+}
