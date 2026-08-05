@@ -9,6 +9,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-08-05
+
 ### Fixed
 
 - JSON serialisation no longer crashes on ESP8266 and AVR. `toJson()` passed
@@ -154,7 +156,8 @@ First public release.
   concurrent reader never sees a half-updated configuration.
 - API reference (`API.md`).
 
-[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.5.1...HEAD
+[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.5.2...HEAD
+[0.5.2]: https://github.com/soosp/NetworkProfile/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/soosp/NetworkProfile/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/soosp/NetworkProfile/compare/0.4.1...0.5.0
 [0.4.1]: https://github.com/soosp/NetworkProfile/compare/0.4.0...0.4.1
