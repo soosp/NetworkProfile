@@ -1,7 +1,7 @@
 {
   "name": "NetworkProfile",
   "version": "0.6.0",
-  "description": "Thread-safe Arduino library for network interface configuration management. Supports WiFi and Ethernet profiles with DHCP/static IP, DNS, NTP, hostname, MAC address, and persistent storage. Also supports storing MQTT configutartion.",
+  "description": "Thread-safe Arduino library for network interface configuration management. Supports WiFi and Ethernet profiles with DHCP/static IP, DNS, NTP, hostname, MAC address, and persistent storage. Also supports storing MQTT configuration.",
   "keywords": "network, wifi, ethernet, ip, dhcp, dns, ntp, mac, esp32, esp8266, avr, thread-safe, preferences",
   "repository": {
     "type": "git",
