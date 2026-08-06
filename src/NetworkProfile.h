@@ -10,8 +10,10 @@
 
 #include <Arduino.h>
 #include <IPAddress.h>
+#include <type_traits>
 #include "Host.h"
 #include "detail/json_tools.h"
+#include "detail/prefs_tools.h"
 
 #if defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_ESP8266)
 #  include <Preferences.h>
@@ -853,6 +855,42 @@ public:
      * kept for the many callers that only need yes/no. Making it authoritative
      * means an invalid config can never be stored, however the UI validated it.
      */
+    /**
+     * @brief Refuses a subclass's config, so the omission cannot be silent.
+     *
+     * These functions are static, so the compiler picks one by the *declared*
+     * type at the call site. Handing a WiFiConfig to the base version — which
+     * happens the moment a caller holds a NetworkProfile& — would quietly check
+     * only the addressing and skip the SSID, password and TX-power rules, and
+     * report Ok. Deleting the derived-type overloads turns that into a
+     * compile-time error instead.
+     *
+     * Two ways forward when it fires: call through the concrete type
+     * (`WiFiProfile::checkConfig(cfg)`), which is almost always what was meant;
+     * or, if only the addressing really is of interest, say so —
+     * `checkConfig(static_cast<const NetworkConfig&>(cfg))`.
+     *
+     * Slicing a config into a NetworkConfig variable first is still possible and
+     * still loses the subclass fields; no signature can catch that, since by then
+     * they are gone.
+     */
+    template <class T, class = typename std::enable_if<
+                  std::is_base_of<NetworkConfig, T>::value &&
+                  !std::is_same<NetworkConfig, T>::value>::type>
+    static ConfigCheck checkConfig(const T&) = delete;
+
+    /** @copydoc checkConfig(const T&) */
+    template <class T, class = typename std::enable_if<
+                  std::is_base_of<NetworkConfig, T>::value &&
+                  !std::is_same<NetworkConfig, T>::value>::type>
+    static bool isValidConfig(const T&) = delete;
+
+    /** @copydoc checkConfig(const T&) */
+    template <class T, class = typename std::enable_if<
+                  std::is_base_of<NetworkConfig, T>::value &&
+                  !std::is_same<NetworkConfig, T>::value>::type>
+    bool setConfig(const T&) = delete;
+
     static bool isValidConfig(const NetworkConfig& cfg) {
         return checkConfig(cfg) == ConfigCheck::Ok;
     }
@@ -1093,9 +1131,7 @@ protected:
      *         empty string. false on any error.
      */
     static bool _putStr(Preferences& p, const char* key, const char* value) {
-        if (value[0] != '\0') return p.putString(key, value) > 0;
-        p.remove(key);
-        return true;
+        return prefs_putStr(p, key, value);   // detail/prefs_tools.h
     }
     
     /**

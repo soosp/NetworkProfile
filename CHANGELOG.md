@@ -9,6 +9,33 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `detail/prefs_tools.h` with `prefs_putStr()` — the empty-string storage rule
+  (store non-empty, remove the key otherwise) now has one implementation instead
+  of one per profile class.
+
+### Changed
+
+- Passing a subclass's config to a base-class `checkConfig()`, `isValidConfig()`
+  or `setConfig()` is now a compile error rather than a silent half-check. These
+  are static, so the compiler picks by declared type: a `WiFiConfig` handed to
+  the base version — which is what happens the moment a caller holds a
+  `NetworkProfile&` — checked the addressing, skipped the SSID, password and
+  TX-power rules, and reported Ok. Deleted derived-type overloads now catch it.
+
+  Where it fires, either call through the concrete type
+  (`WiFiProfile::checkConfig(cfg)`), which is nearly always what was meant, or
+  state that only the addressing is of interest:
+  `checkConfig(static_cast<const NetworkConfig&>(cfg))`. Slicing a config into a
+  `NetworkConfig` variable first still loses the subclass fields — by then they
+  are gone, and no signature can catch that. `MqttProfile` carries the same
+  guard.
+
+  Impact on the dependent libraries was one call site, inside `WiFiProfile`
+  itself; `NetworkManager`, `AsyncConfigPortal` and `AsyncWiFiPortal` all already
+  called through the concrete type or cast explicitly.
+
 ## [0.5.3] - 2026-08-05
 
 ### Changed

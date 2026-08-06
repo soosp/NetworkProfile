@@ -31,6 +31,7 @@
   - [Static validators](#static-validators)
 - [EthProfile](#ethprofile-class)
   - [Constructors](#ethprofile-constructors)
+- [Passing a subclass config to a base function](#passing-a-subclass-config-to-a-base-function)
 
 ---
 
@@ -584,3 +585,31 @@ ESP32/ESP8266/AVR.
 EthProfile();
 explicit EthProfile(const NetworkConfig& cfg);
 ```
+
+## Passing a subclass config to a base function
+
+`checkConfig()`, `isValidConfig()` and `setConfig()` refuse a subclass's config
+at compile time:
+
+```cpp
+WiFiProfile::WiFiConfig cfg;
+NetworkProfile& p = wifiProfile;
+p.checkConfig(cfg);            // error: use of deleted function
+```
+
+The reason is that the base versions are static: the compiler picks one by the
+declared type at the call site, so this used to check the addressing, skip the
+SSID, password and TX-power rules, and report `Ok`. Deleted derived-type
+overloads turn that silent half-check into an error.
+
+Two ways forward:
+
+```cpp
+WiFiProfile::checkConfig(cfg);                              // what was almost always meant
+NetworkProfile::checkConfig(static_cast<const NetworkProfile::NetworkConfig&>(cfg));
+```
+
+the second saying explicitly that only the addressing is of interest.
+
+Copying a subclass config into a `NetworkConfig` variable first still loses the
+extra fields — by then they are gone, and no signature can catch it.

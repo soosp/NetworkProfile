@@ -557,7 +557,9 @@ public:
         if (!isValidSsid(cfg.ssid))         return ConfigCheck::BadSsid;
         if (!isValidPassword(cfg.password)) return ConfigCheck::BadPassword;
         if (!isValidTxPower(cfg.txPower))   return ConfigCheck::BadTxPower;
-        return NetworkProfile::checkConfig(cfg);
+        // Explicit: only the addressing part is left to check, and the deleted
+        // derived-type overload would otherwise (rightly) reject this call.
+        return NetworkProfile::checkConfig(static_cast<const NetworkConfig&>(cfg));
     }
 
     /**
