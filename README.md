@@ -5,6 +5,9 @@ Thread-safe Arduino library for network interface configuration management.
 ## Features
 
 - **WiFiProfile** and **EthProfile** classes for WiFi and Ethernet interfaces
+- **MqttProfile** for the broker settings a device needs to reach an MQTT server
+  (address, port, TLS, credentials) — storage and validation only, with no MQTT
+  client of its own
 - DHCP or static IP configuration (IP, subnet mask, gateway, DNS)
 - Up to 3 NTP servers per profile (IP or FQDN, validated via the
   [Host](https://github.com/soosp/Host) library)
@@ -244,6 +247,21 @@ on the stack, it also benefits from the reduced `HOST_FQDN_LEN` and
       profile.saveCfg("eth");
   }
   ```
+
+### Why MQTT settings live here
+
+The library is named after network interfaces, and an MQTT broker is not one. It
+is here for the same reason the NTP servers are: both are addresses a networked
+device stores in order to reach a service, both are edited on the same page and
+backed up in the same file, and a device that needs one almost always needs the
+other. Splitting them into separate libraries would mean three dependencies and
+three release cycles for things that are always deployed together.
+
+The boundary that does hold is a different one: `MqttProfile` stores and
+validates, and contains no MQTT client, no topics and no connection logic. The
+same profile therefore serves an ESP32 task, an ESP8266 loop and an AVR with no
+portal at all — the application owns the client, this owns what survives a
+reboot.
 
 ## License
 

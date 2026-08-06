@@ -31,6 +31,15 @@
   - [Static validators](#static-validators)
 - [EthProfile](#ethprofile-class)
   - [Constructors](#ethprofile-constructors)
+- [MqttProfile](#mqttprofile-class)
+  - [Constants](#mqttprofile-constants)
+  - [MqttConfig struct](#mqttconfig-struct)
+  - [ConfigCheck enum](#mqttprofile-configcheck-enum)
+  - [Configuration](#mqttprofile-configuration)
+  - [Validation](#mqttprofile-validation)
+  - [Persistence](#mqttprofile-persistence)
+  - [Serialisation](#mqttprofile-serialisation)
+  - [Extending it](#extending-mqttprofile)
 - [Passing a subclass config to a base function](#passing-a-subclass-config-to-a-base-function)
 
 ---
@@ -585,6 +594,146 @@ ESP32/ESP8266/AVR.
 EthProfile();
 explicit EthProfile(const NetworkConfig& cfg);
 ```
+
+---
+
+## MqttProfile class
+
+Stores the settings a device needs in order to reach an MQTT broker. It holds no
+client, no topics and no connection logic: the application connects, this only
+survives the reboot. Topics are deliberately absent — a project derives them from
+its own naming, and a profile that guessed at a layout would be wrong for most.
+
+Unlike the interface profiles, `MqttProfile` does not extend `NetworkProfile`;
+it is a standalone class in the same library.
+
+```cpp
+#include <MqttProfile.h>
+MqttProfile mqtt;
+```
+
+### MqttProfile constants
+
+| Constant | Default | Meaning |
+| --- | --- | --- |
+| `MAX_USER_LEN` / `MAX_USER_SIZE` | 32 / 33 | username, excluding / including the terminator |
+| `MAX_PASSWORD_LEN` / `MAX_PASSWORD_SIZE` | 64 / 65 | password, likewise |
+| `DEFAULT_PORT` | 1883 | plain MQTT |
+| `DEFAULT_TLS_PORT` | 8883 | MQTT over TLS |
+| `MUTEX_TIMEOUT` | 1000 | ms a bulk operation waits for the lock (ESP32) |
+
+Override `MQTT_PROFILE_MAX_USER_LEN`, `MQTT_PROFILE_MAX_PASSWORD_LEN` and
+`MQTT_PROFILE_MUTEX_TIMEOUT` through build flags.
+
+### MqttConfig struct
+
+```cpp
+struct MqttConfig {
+    bool     enabled  = false;
+    char     host[Host::MAX_FQDN_SIZE] = {};   // FQDN or IP literal
+    uint16_t port     = DEFAULT_PORT;
+    bool     tls      = false;
+    char     user[MAX_USER_SIZE]         = {}; // empty: anonymous
+    char     password[MAX_PASSWORD_SIZE] = {};
+};
+```
+
+`enabled` is a field of its own rather than an empty host standing in for it:
+"switched off" and "not configured yet" are two different facts, and a device
+taken off the broker for a while should not have to forget its address to do it.
+
+Changing `tls` does not change `port`. The two well-known ports are offered as
+constants, but guessing would overwrite a deliberate choice.
+
+### MqttProfile ConfigCheck enum
+
+| Value | Meaning |
+| --- | --- |
+| `Ok` | usable as it stands |
+| `NoHost` | enabled, but no broker address |
+| `BadHost` | not a valid FQDN or IP literal |
+| `BadPort` | port is zero |
+| `PasswordWithoutUser` | a password with no username to go with it |
+
+### MqttProfile configuration
+
+```cpp
+bool getConfig(MqttConfig& out) const;
+bool setConfig(const MqttConfig& in);
+```
+
+Both return `false` if the lock could not be obtained within `MUTEX_TIMEOUT`; on
+failure `getConfig()` leaves `out` untouched and `setConfig()` changes nothing.
+The lock matters because the struct is copied field by field: a portal saving
+while a client task reads would otherwise hand out half of each.
+
+`setConfig()` does not validate — stage a config, check it, then keep it.
+
+### MqttProfile validation
+
+```cpp
+virtual ConfigCheck checkConfig(const MqttConfig& cfg) const;
+```
+
+Takes the config as a parameter, like `NetworkProfile::checkConfig()`, so it
+validates a staged copy and touches no member state. A disabled profile always
+passes: its fields are not going to be used, and refusing to save a half-filled
+form the user has just switched off would only be in the way.
+
+Virtual rather than static, so a subclass's rules also run through a base
+reference — see [Extending it](#extending-mqttprofile).
+
+### MqttProfile persistence
+
+```cpp
+bool saveCfg(const char* ns);
+bool loadCfg(const char* ns);
+```
+
+Same shape as `NetworkProfile`: the namespace is the caller's, so one device can
+keep several brokers' settings side by side. A record is marked complete only
+after everything is written, so a save interrupted by a reset is ignored on the
+next load rather than half-applied.
+
+An empty string removes its key instead of storing a blank, so a later load falls
+back to the field's default.
+
+### MqttProfile serialisation
+
+```cpp
+virtual bool toJson(char* json, size_t len) const;
+```
+
+For backup. **The password is not included** — a backup file travels through mail
+and cloud storage, and a broker credential in it is a credential leaked. The
+Wi-Fi profile makes the same trade: restoring one needs the password typed again.
+
+Returns `false` and empties `json` if the document did not fit, rather than
+leaving half of one.
+
+### Extending MqttProfile
+
+A project that stores one more setting subclasses rather than patching the
+library:
+
+```cpp
+class HaMqttProfile : public MqttProfile {
+public:
+    struct HaConfig : public MqttConfig { bool discovery = false; };
+    using MqttProfile::checkConfig;                     // keep the base overload visible
+    ConfigCheck checkConfig(const HaConfig& cfg) const {
+        if (cfg.discovery && !cfg.enabled) return ConfigCheck::NoHost;
+        return MqttProfile::checkConfig(static_cast<const MqttConfig&>(cfg));
+    }
+};
+```
+
+Override `_doSave()` / `_doLoad()` (calling the base first) to persist the extra
+field, and `toJson()` to include it.
+
+See `examples/MqttConfig`.
+
+---
 
 ## Passing a subclass config to a base function
 

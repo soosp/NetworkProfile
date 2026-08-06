@@ -11,6 +11,26 @@ and this project adheres to
 
 ### Added
 
+- `MqttProfile` — stored MQTT broker settings (enabled, host, port, TLS,
+  username, password) with `checkConfig()`, `saveCfg()`/`loadCfg()` and
+  `toJson()`. It lives here rather than in a library of its own for the same
+  reason the NTP servers do: it is something a networked device stores in order
+  to reach a service, and the two are always deployed together. It knows nothing
+  about MQTT itself — no client, no topics, no connection — so the same profile
+  serves an ESP32 task, an ESP8266 loop and an AVR without a portal.
+  Topics are deliberately absent, being project-specific; the virtual hooks are
+  there for a subclass that needs them.
+- `enabled` is a field of its own rather than an empty host standing in for it:
+  "switched off" and "not configured yet" are different facts, and a device taken
+  off the broker for a while should not have to forget its address to do it.
+- `MqttProfile` locks the same way `NetworkProfile` does — a `std::timed_mutex`
+  where preemption exists (ESP32), a no-op on AVR and ESP8266 — because the
+  settings are copied field by field: the portal saving while a client task
+  reads would otherwise hand out half of each. `getConfig()` and `setConfig()`
+  return `bool` accordingly. `checkConfig()` takes the config as a parameter, as
+  `NetworkProfile`'s does, so validation runs on a staged copy and needs no lock
+  at all — but it is virtual rather than static, since a static one called
+  through a base reference silently skips a subclass's own rules.
 - `detail/prefs_tools.h` with `prefs_putStr()` — the empty-string storage rule
   (store non-empty, remove the key otherwise) now has one implementation instead
   of one per profile class.
@@ -35,6 +55,12 @@ and this project adheres to
   Impact on the dependent libraries was one call site, inside `WiFiProfile`
   itself; `NetworkManager`, `AsyncConfigPortal` and `AsyncWiFiPortal` all already
   called through the concrete type or cast explicitly.
+
+### Note
+
+- The MQTT password is not written to `toJson()`, matching `WiFiProfile`: a
+  backup file may travels through mail and cloud storage. Restoring one
+  therefore needs the broker password entered again.
 
 ## [0.5.3] - 2026-08-05
 
