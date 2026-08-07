@@ -130,7 +130,7 @@ The defaults below can be configured via `NETWORK_PROFILE_DNS_SERVER_COUNT` and
 |Platform|DNS (default)|DNS (max)|NTP (default)|NTP (max)|Notes|
 |--|--:|--:|--:|--:|--|
 |AVR|1|1|0|1|`DNSClient` limits the number of DNS servers to 1. NTP is disabled by default.|
-|ESP8266|2|2|3|3||
+|ESP8266|2|2|1|3||
 |ESP32|2|3|3|3|LwIP supports 3 DNS servers, but only 2 can be configured via WiFi API so the default lowered to 2.|
 
 ## Memory Optimisation

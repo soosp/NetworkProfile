@@ -52,8 +52,8 @@ Define these **before** including any library header, or via `platformio.ini` `b
 |---|---|---|---|
 |`HOST_FQDN_LEN`|253|1 – 253|Maximum FQDN length in `Host` objects.|
 |`HOST_FQDN_LABEL_LEN`|63|1 – 63|Maximum single label length. Must be ≤ `HOST_FQDN_LEN`.|
-|`NETWORK_PROFILE_NTP_SERVER_COUNT`|3|0 – 3|NTP server slots per profile. 0 disables NTP entirely.|
-|`NETWORK_PROFILE_DNS_SERVER_COUNT`|2|1 – 2|DNS server slots per profile.|
+|`NETWORK_PROFILE_NTP_SERVER_COUNT`|3 (ESP32), 1 (ESP8266), 0 (AVR)|0 – 3 (0 – 1 on AVR)|NTP server slots per profile. 0 disables NTP entirely.|
+|`NETWORK_PROFILE_DNS_SERVER_COUNT`|2 (1 on AVR)|1 – 2 (1 on AVR)|DNS server slots per profile.|
 |`NETWORK_PROFILE_HOSTNAME_LEN`|63|10 – 63|Maximum hostname length. Lower bound accommodates the generated default (e.g. `ESP-02D6FC`).|
 |`NETWORK_PROFILE_JSON_LEN`|1200|—|Maximum JSON content length. Reduce after lowering other buffer sizes.|
 |`NETWORK_PROFILE_MUTEX_TIMEOUT`|1000|—|Mutex acquisition timeout in milliseconds. Used on ESP32 only; ESP8266 (cooperative scheduling) and AVR (single-threaded) have no lock and ignore it.|
@@ -71,8 +71,8 @@ directly — use `WiFiProfile` or `EthProfile`.
 
 |Constant|Value|Description|
 |---|---|---|
-|`NTP_SERVER_COUNT`|3|Effective NTP server count (reflects macro).|
-|`DNS_SERVER_COUNT`|2|Effective DNS server count (reflects macro).|
+|`NTP_SERVER_COUNT`|3 (ESP32), 1 (ESP8266), 0 (AVR)|Effective NTP server count (reflects macro).|
+|`DNS_SERVER_COUNT`|2 (1 on AVR)|Effective DNS server count (reflects macro).|
 |`MAC_LEN`|6|MAC address length in bytes.|
 |`MAC_STR_SIZE`|18|MAC string buffer size (`"AA:BB:CC:DD:EE:FF\0"`).|
 |`MUTEX_TIMEOUT`|1000|Mutex acquisition timeout in milliseconds.|

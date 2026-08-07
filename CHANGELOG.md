@@ -16,6 +16,12 @@ and this project adheres to
   a temporary that size has no business on an ESP8266 stack, least of all inside
   an async request handler. `MqttProfile::toJson()` uses it.
 
+### Changed
+
+- To optimize memory usage, the default setting on the ESP8266 is one NTP server
+  per profile. The maximum number remains three, as supported by LwIP. The
+  default can be overridden using the `NETWORK_PROFILE_NTP_SERVER_COUNT` macro.
+  
 ## [0.6.0] - 2026-08-05
 
 ### Added
