@@ -142,3 +142,35 @@ inline size_t json_escape(char* dst, size_t dstLen, const char* src) {
     dst[written] = '\0';
     return written;
 }
+
+/**
+ * @brief Appends @p src to @p dst, escaping as it goes.
+ *
+ * The same result as escaping into a scratch buffer and appending that, without
+ * the scratch buffer — which matters where this runs: a fully escaped host name
+ * needs six bytes per character, and a temporary that size does not belong on an
+ * ESP8266 stack, let alone inside an async request handler.
+ *
+ * @param dst     Destination string in RAM (null-terminated).
+ * @param src     String to append, in RAM; escaped per RFC 8259.
+ * @param dstSize Total capacity of @p dst in bytes.
+ * @return @c true if all of @p src fit; @c false if it was truncated, in which
+ *         case @p dst is left with whatever fit, terminated and never split
+ *         mid-escape.
+ */
+inline bool json_cat_esc(char* dst, const char* src, size_t dstSize) {
+    if (!dst || !src) return false;
+    size_t w = strlen(dst);
+    while (*src) {
+        const unsigned char c = (unsigned char)*src++;
+        if (c >= 0x20 && c <= 0x7E && c != '"' && c != '\\') {
+            if (w + 1 >= dstSize) { dst[w] = '\0'; return false; }
+            dst[w++] = (char)c;
+        } else {
+            if (w + 6 >= dstSize) { dst[w] = '\0'; return false; }
+            w += snprintf(dst + w, dstSize - w, "\\u%04X", c);
+        }
+    }
+    dst[w] = '\0';
+    return true;
+}

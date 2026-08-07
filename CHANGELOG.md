@@ -9,6 +9,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `json_cat_esc()` in `detail/json_tools.h` — appends a string escaped, without
+  a scratch buffer. A fully escaped host name needs six bytes per character, and
+  a temporary that size has no business on an ESP8266 stack, least of all inside
+  an async request handler. `MqttProfile::toJson()` uses it.
+
 ## [0.6.0] - 2026-08-05
 
 ### Added

@@ -231,7 +231,6 @@ public:
     virtual bool toJson(char* json, size_t len) const {
         if (!json || len == 0) return false;
 
-        char esc[Host::MAX_FQDN_SIZE * 6];
         char buf[32];
         json[0] = '\0';
         if (!_lock()) return false;
@@ -239,9 +238,8 @@ public:
         bool ok = json_cat_P(json, PSTR("{\"enabled\":"), len);
         ok = ok && json_cat_P(json, _cfg.enabled ? PSTR("true") : PSTR("false"), len);
 
-        json_escape(esc, sizeof(esc), _cfg.host);
         ok = ok && json_cat_P(json, PSTR(",\"host\":\""), len);
-        ok = ok && json_cat(json, esc, len);
+        ok = ok && json_cat_esc(json, _cfg.host, len);   // escapes in place
         ok = ok && json_cat_P(json, PSTR("\""), len);
 
         ok = ok && json_fitted(snprintf_P(buf, sizeof(buf), PSTR(",\"port\":%u"),
@@ -251,9 +249,8 @@ public:
         ok = ok && json_cat_P(json, PSTR(",\"tls\":"), len);
         ok = ok && json_cat_P(json, _cfg.tls ? PSTR("true") : PSTR("false"), len);
 
-        json_escape(esc, sizeof(esc), _cfg.user);
         ok = ok && json_cat_P(json, PSTR(",\"user\":\""), len);
-        ok = ok && json_cat(json, esc, len);
+        ok = ok && json_cat_esc(json, _cfg.user, len);
         ok = ok && json_cat_P(json, PSTR("\"}"), len);
 
         _unlock();
