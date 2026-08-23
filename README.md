@@ -9,7 +9,9 @@ Thread-safe Arduino library for network interface configuration management.
   (address, port, TLS, credentials) — storage and validation only, with no MQTT
   client of its own
 - DHCP or static IP configuration (IP, subnet mask, gateway, DNS)
-- Up to 3 NTP servers per profile (IP or FQDN, validated via the
+- **NtpProfile** for the NTP servers a device synchronises from — one set for the
+  device rather than a copy in every interface, and more than one instance where
+  interfaces really do reach different servers (IP or FQDN, validated via the
   [Host](https://github.com/soosp/Host) library)
 - Hostname with automatic MAC-based fallback (e.g. `ESP-02D6FC`)
 - MAC address management — hardware default and user override
@@ -84,7 +86,6 @@ void setup() {
     cfg.priority = 1;
     strncpy(cfg.ssid,     "MyNetwork",    sizeof(cfg.ssid)   - 1);
     strncpy(cfg.password, "MyPassword",   sizeof(cfg.password) - 1);
-    strncpy(cfg.ntp[0],   "pool.ntp.org", sizeof(cfg.ntp[0]) - 1);
     wifiProfile.setConfig(cfg);
 
     // Save to flash
@@ -117,21 +118,22 @@ The most commonly needed macros for memory optimisation:
 |Macro|Default|Description|
 |--|--:|--|
 |`NETWORK_PROFILE_DNS_SERVER_COUNT`|[See Library defaults](#library-defaults)|DNS server slots.|
-|`NETWORK_PROFILE_NTP_SERVER_COUNT`|[See Library defaults](#library-defaults)|NTP server slots. Set to 0 to disable NTP entirely.|
+|`NTP_PROFILE_ENABLED`|1, or 0 on AVR|Whether NTP exists in the build at all.|
+|`NTP_PROFILE_SERVER_COUNT`|[See Library defaults](#library-defaults)|NTP server slots, 1 to 3. Set to 0 to disable NTP entirely.|
 |`NETWORK_PROFILE_HOSTNAME_LEN`|63|Maximum hostname length.|
-|`HOST_FQDN_LEN`|253|Maximum NTP-server string (IP/FQDN) length.|
+|`HOST_FQDN_LEN`|253|Maximum host string (IP/FQDN) length — NTP servers, MQTT broker.|
 |`NETWORK_PROFILE_DEFAULT_ETH_MAC`|—|Required on AVR without unique serial number.|
 
 ### Library defaults
 
 The defaults below can be configured via `NETWORK_PROFILE_DNS_SERVER_COUNT` and
-`NETWORK_PROFILE_NTP_SERVER_COUNT` macros.
+`NTP_PROFILE_SERVER_COUNT` macros.
 
-|Platform|DNS (default)|DNS (max)|NTP (default)|NTP (max)|Notes|
-|--|--:|--:|--:|--:|--|
-|AVR|1|1|0|1|`DNSClient` limits the number of DNS servers to 1. NTP is disabled by default.|
-|ESP8266|2|2|1|3||
-|ESP32|2|3|3|3|LwIP supports 3 DNS servers, but only 2 can be configured via WiFi API so the default lowered to 2.|
+|Platform|DNS (default)|DNS (max)|NTP|NTP servers (default)|NTP servers (max)|Notes|
+|--|--:|--:|:-:|--:|--:|--|
+|AVR|1|1|**off**|1|1|`DNSClient` limits the number of DNS servers to 1. NTP is opt-in: `NTP_PROFILE_ENABLED` also guards NetworkManager's UDP SNTP client here.|
+|ESP8266|2|2|on|1|3||
+|ESP32|2|3|on|3|3|LwIP supports 3 DNS servers, but only 2 can be configured via WiFi API so the default lowered to 2.|
 
 ## Memory Optimisation
 
@@ -141,15 +143,24 @@ controlled by compile-time macros and can be reduced without any code changes.
 
 ### Where RAM goes (default configuration)
 
-The dominant cost per `NetworkProfile` instance comes from the NTP server array
-and the hostname buffers:
+What a `NetworkProfile` costs is now mostly the hostname buffers — the NTP
+servers moved out to `NtpProfile`, of which a device declares one rather than one
+per interface:
 
 |Field|Formula|Default size|
 |--|--|--|
-|`_ntp[NTP_SERVER_COUNT]`|`NTP_SERVER_COUNT × (HOST_FQDN_LEN + 1)`|3 × 254 = **762 bytes**|
 |`_hostname`|`NETWORK_PROFILE_HOSTNAME_LEN + 1`|**64 bytes**|
 |`_hostnameDefault`|`NETWORK_PROFILE_HOSTNAME_LEN + 1`|**64 bytes**|
-|`NetworkConfig::ntp[][]` (stack)|`NTP_SERVER_COUNT × (HOST_FQDN_LEN + 1)`|3 × 254 = **762 bytes**|
+|`_dns[]`|`DNS_SERVER_COUNT × 4`|**8 bytes**|
+
+`NtpProfile` is charged once for the device, not per interface:
+
+|Field|Formula|Default size|
+|--|--|--|
+|`NtpConfig::server[]`|`NtpProfile::SERVER_COUNT × (HOST_FQDN_LEN + 1)`|3 × 254 = **762 bytes**|
+
+Declaring no `NtpProfile` costs nothing at all: no instance, no buffers, and the
+linker drops the code.
 
 ### Lite configuration example
 
@@ -162,7 +173,6 @@ bare IP address or a short hostname:
 build_flags =
     -DHOST_FQDN_LEN=15
     -DHOST_FQDN_LABEL_LEN=15
-    -DNETWORK_PROFILE_NTP_SERVER_COUNT=1
     -DNETWORK_PROFILE_DNS_SERVER_COUNT=1
     -DNETWORK_PROFILE_HOSTNAME_LEN=15
 ```
@@ -172,25 +182,31 @@ Or equivalently, defined before any library include:
 ```cpp
 #define HOST_FQDN_LEN                    15   // fits "255.255.255.255"
 #define HOST_FQDN_LABEL_LEN              15
-#define NETWORK_PROFILE_NTP_SERVER_COUNT  1
 #define NETWORK_PROFILE_DNS_SERVER_COUNT  1
 #define NETWORK_PROFILE_HOSTNAME_LEN     15
 ```
 
-### RAM savings (per profile instance)
+### RAM savings
+
+Per `NetworkProfile` instance — so multiplied by the number of interfaces:
 
 |Field|Default|Lite|Saving|
 |--|--|--|--|
 |`_dns[]`|2 × 4 = 8 B|1 × 4 = 4 B|**4 B**|
-|`_ntp[]`|3 × 254 = 762 B|1 × 16 = 16 B|**746 B**|
 |`_hostname`|64 B|16 B|**48 B**|
 |`_hostnameDefault`|64 B|16 B|**48 B**|
-|**Total per instance**|||**≈ 846 B**|
+|**Total per instance**|||**≈ 100 B**|
 
-> **Note:** `NetworkConfig` (used in `setConfig()` / `getConfig()`) contains
-its own `dns[][]` and `ntp[][]` array of the same dimensions. When allocated
-on the stack, it also benefits from the reduced `HOST_FQDN_LEN` and
-`NETWORK_PROFILE_NTP_SERVER_COUNT` values.
+Once for the device, in `NtpProfile`:
+
+|Field|Default|Lite|Saving|
+|--|--|--|--|
+|`server[]`|3 × 254 = 762 B|1 × 16 = 16 B|**746 B**|
+
+> **Note:** `NetworkConfig` and `NtpConfig` (used by `setConfig()` /
+`getConfig()`) hold arrays of the same dimensions. Allocated on the stack, they
+benefit from the same reductions — which is why `HOST_FQDN_LEN` is the single
+most effective knob here: it is multiplied by every profile and every NTP slot.
 
 ### Constraints
 
@@ -199,8 +215,13 @@ on the stack, it also benefits from the reduced `HOST_FQDN_LEN` and
 - `NETWORK_PROFILE_HOSTNAME_LEN` minimum is 10 (needed for the generated
   `ESP-XXYYZZ` / `AVR-XXYYZZ` default hostname).
 - `NETWORK_PROFILE_DNS_SERVER_COUNT` can be set to 1 instead of the default 2.
-- `NETWORK_PROFILE_NTP_SERVER_COUNT` can be set to 0 to completely eliminate
-  the NTP array.
+- `NTP_PROFILE_ENABLED` set to 0 leaves NTP out of the build entirely — the
+  profile class and NetworkManager's SNTP support alike. Simply not declaring a
+  profile already costs nothing, so this is worth setting only to drop the
+  manager's side too; on AVR, where that side is a UDP client with its own
+  socket, it is the default.
+- `NTP_PROFILE_SERVER_COUNT` says how many servers a profile holds, 1 to 3. It is
+  a count, not a switch: zero is refused.
 - All macros must be defined identically in every translation unit that
   includes the library headers. The safest place is `platformio.ini`
   `build_flags` or an early `#define` in the project's global config header.
@@ -215,7 +236,7 @@ on the stack, it also benefits from the reduced `HOST_FQDN_LEN` and
 - **Thread safety**: on ESP32 all getters and setters acquire a
   `std::timed_mutex`. On single-context platforms — ESP8266 (cooperatively
   scheduled, no preemption) and AVR (single-threaded) — no lock is needed and
-  `_lock()`/`_unlock()` compile to no-ops. NTP servers are stored as plain
+  `_lock()`/`_unlock()` compile to no-ops. Host strings are stored as plain
   strings and guarded by the same `NetworkProfile` mutex as every other field.
 - **MAC address**: `getMac()` and `getHostname()` support a `ConfigSource`
   parameter to select between the active (user-set) value and the hardware
@@ -228,8 +249,7 @@ on the stack, it also benefits from the reduced `HOST_FQDN_LEN` and
   step down, which leaves a device transmitting at a power nobody chose and
   nothing to show for it. On ESP8266 the 0.25 dBm grid is genuine and the
   whole range is accepted.
-- **DHCP-provided NTP servers**: if a profile has no NTP server configured
-  (`isConfiguredNtp()` returns `false`),
+- **DHCP-provided NTP servers**: if no `NtpProfile` holds a server,
   [NetworkManager](https://github.com/soosp/NetworkManager) requests the NTP
   server address via DHCP option 42 instead of falling back to a hardcoded
   default. This is handled entirely on the adapter side, since the request must
@@ -247,6 +267,34 @@ on the stack, it also benefits from the reduced `HOST_FQDN_LEN` and
       profile.saveCfg("eth");
   }
   ```
+
+### More than one NtpProfile
+
+The usual case is one: a device has one clock, and the same servers are reachable
+whichever way it is connected. But interfaces sometimes genuinely differ — an
+internal time server on a wired LAN that a phone hotspot cannot reach, say — and
+then the answer is a second instance rather than a field per interface:
+
+```cpp
+NtpProfile ethNtp, wifiNtp;      // one per interface
+
+NetworkManager.onEvent([](NetworkManagerClass::Event e, NetworkAdapter& a) {
+    if (e == NetworkManagerClass::Event::CONNECTED)
+        NetworkManager.setNtpProfile(
+            a.getProfile().getInterfaceType() == NetworkProfile::InterfaceType::WIFI
+                ? wifiNtp : ethNtp);
+});
+```
+
+Switching from the CONNECTED handler applies to *that* handoff, not the next one:
+the manager dispatches events to the application earlier in the same `update()`
+pass than it configures NTP. `NetworkManager`'s FallbackTestRunner example relies
+on exactly this — it gives the two interfaces different servers so the log shows
+which one the SNTP client actually ended up using.
+
+Two objects say "these interfaces see different time servers" plainly. The field
+buried in each interface's configuration said it by accident, and mostly said it
+twice with the same value.
 
 ### Why MQTT settings live here
 

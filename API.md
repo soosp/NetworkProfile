@@ -31,6 +31,7 @@
   - [Static validators](#static-validators)
 - [EthProfile](#ethprofile-class)
   - [Constructors](#ethprofile-constructors)
+- [NtpProfile](#ntpprofile-class)
 - [MqttProfile](#mqttprofile-class)
   - [Constants](#mqttprofile-constants)
   - [MqttConfig struct](#mqttconfig-struct)
@@ -52,7 +53,8 @@ Define these **before** including any library header, or via `platformio.ini` `b
 |---|---|---|---|
 |`HOST_FQDN_LEN`|253|1 – 253|Maximum FQDN length in `Host` objects.|
 |`HOST_FQDN_LABEL_LEN`|63|1 – 63|Maximum single label length. Must be ≤ `HOST_FQDN_LEN`.|
-|`NETWORK_PROFILE_NTP_SERVER_COUNT`|3 (ESP32), 1 (ESP8266), 0 (AVR)|0 – 3 (0 – 1 on AVR)|NTP server slots per profile. 0 disables NTP entirely.|
+|`NTP_PROFILE_ENABLED`|1, 0 on AVR|0 or 1|Whether NTP exists in the build.|
+|`NTP_PROFILE_SERVER_COUNT`|3 (ESP32), 1 elsewhere|1 – 3 (1 – 1 on AVR)|NTP server slots per profile. 0 disables NTP entirely.|
 |`NETWORK_PROFILE_DNS_SERVER_COUNT`|2 (1 on AVR)|1 – 2 (1 on AVR)|DNS server slots per profile.|
 |`NETWORK_PROFILE_HOSTNAME_LEN`|63|10 – 63|Maximum hostname length. Lower bound accommodates the generated default (e.g. `ESP-02D6FC`).|
 |`NETWORK_PROFILE_JSON_LEN`|1200|—|Maximum JSON content length. Reduce after lowering other buffer sizes.|
@@ -71,7 +73,6 @@ directly — use `WiFiProfile` or `EthProfile`.
 
 |Constant|Value|Description|
 |---|---|---|
-|`NTP_SERVER_COUNT`|3 (ESP32), 1 (ESP8266), 0 (AVR)|Effective NTP server count (reflects macro).|
 |`DNS_SERVER_COUNT`|2 (1 on AVR)|Effective DNS server count (reflects macro).|
 |`MAC_LEN`|6|MAC address length in bytes.|
 |`MAC_STR_SIZE`|18|MAC string buffer size (`"AA:BB:CC:DD:EE:FF\0"`).|
@@ -128,7 +129,6 @@ enum class ConfigCheck : uint8_t {
     BadMask,
     GatewayOffSubnet,
     BadDns,
-    BadNtp,
     BadSsid,        // WiFiProfile only
     BadPassword,    // WiFiProfile only
     BadTxPower,     // WiFiProfile only
@@ -152,7 +152,6 @@ struct NetworkConfig {
     IPAddress  gateway;
     IPAddress  dns[DNS_SERVER_COUNT];
     char       hostname[MAX_HOSTNAME_SIZE]                = {};
-    char       ntp[NTP_SERVER_COUNT][Host::MAX_FQDN_SIZE] = {};  // if NTP_SERVER_COUNT > 0
     uint8_t    priority = 0;
     MACAddress mac      = {};
 };
@@ -160,9 +159,6 @@ struct NetworkConfig {
 
 **Notes:**
 
-- `ntp[]` holds string representations (dotted-decimal IP or FQDN). Each entry
-  is validated (IP or FQDN) and stored by `setConfig()`. An empty string resets
-  the corresponding NTP slot.
 - `mac` sets the active MAC override. To revert to the hardware default, set
   all bytes to `0x00`.
 
@@ -233,30 +229,13 @@ letters/digits/hyphens only, no leading or trailing hyphen, not all-numeric.
 
 ### NTP servers
 
-Available only when `NETWORK_PROFILE_NTP_SERVER_COUNT > 0`.
+Moved to `NtpProfile`. The servers a device synchronises from are a property of
+the device — it has one clock — not of whichever interface happens to be up, and
+a copy per profile meant the same address typed twice, stored twice, and free to
+drift. See [NtpProfile](#ntpprofile-class).
 
-```cpp
-bool getNtp(uint8_t index, char* out, size_t len) const;
-bool setNtp(const char* str, uint8_t index = 0);
-bool isConfiguredNtp() const;
-```
-
-**`getNtp()`** — copies the configured server (IP or FQDN) at `index` into
-`out`, read under the `NetworkProfile` mutex so it composes atomically with the
-other getters. Returns `false` on an out-of-range index, truncation, or mutex
-timeout; `out` is set to `""` on failure. An empty slot yields `""` and `true`.
-
-**`setNtp()`** — validates `str` as a dotted-decimal IP or an FQDN and stores it
-(`index` clamped to 0 if out of range). An empty string resets the slot. Returns
-`false` if the string is neither a valid IP nor a valid FQDN, leaving the entry
-unchanged.
-
-**`isConfiguredNtp()`** — returns `true` if at least one NTP slot holds a
-non-empty string, `false` if all slots are empty or
-`NETWORK_PROFILE_NTP_SERVER_COUNT` is 0. Used by adapters (see
-[NetworkManager](https://github.com/soosp/NetworkManager)) to decide whether to
-request NTP server addresses via DHCP option 42 when no explicit server is
-configured in the profile.
+`NtpProfile::importLegacy()` reads servers written by a version that still stored
+them here.
 
 ### Priority
 
@@ -594,6 +573,97 @@ ESP32/ESP8266/AVR.
 EthProfile();
 explicit EthProfile(const NetworkConfig& cfg);
 ```
+
+---
+
+## NtpProfile class
+
+The NTP servers a device synchronises from. A standalone class in this library,
+like `MqttProfile` — it does not extend `NetworkProfile`.
+
+Device-level on purpose: a device has one clock, so the servers belong to it and
+not to whichever interface is up. Where interfaces genuinely reach different time
+servers — an internal one on a wired LAN, a public pool over a hotspot — keep two
+instances and hand the manager whichever applies, from its CONNECTED handler.
+That takes effect for the handoff in progress: the manager dispatches events to
+the application earlier in the same `update()` pass than it configures NTP.
+
+Two objects say that plainly; a field inside each interface's configuration said
+it by accident, and usually said it twice with the same value.
+
+Storage and validation only: no client, no protocol. NetworkManager applies the
+servers when an interface comes up.
+
+```cpp
+#include <NtpProfile.h>
+NtpProfile ntp;
+```
+
+### NtpProfile constants
+
+|Constant|Default|Meaning|
+|---|---|---|
+|`SERVER_COUNT`|3 (ESP32), 1 (ESP8266), 1 (AVR)|stored servers|
+|`MUTEX_TIMEOUT`|1000|ms a bulk operation waits for the lock (ESP32)|
+
+`NTP_PROFILE_ENABLED` decides whether this class exists at all, and guards
+NetworkManager's SNTP support with it — on AVR a UDP client with its own socket
+and state machine, which is why NTP is off there by default. Declaring no
+instance already costs nothing, so setting it to 0 is worth it only to drop the
+manager's side as well.
+
+`NTP_PROFILE_SERVER_COUNT` says how many servers a profile holds: 1 to 3, three
+only on ESP32 by default since each costs `Host::MAX_FQDN_SIZE` of RAM. It is a
+count rather than a switch, so zero is refused with a message naming
+`NTP_PROFILE_ENABLED`.
+
+### NtpConfig struct
+
+```cpp
+struct NtpConfig {
+    char server[SERVER_COUNT][Host::MAX_FQDN_SIZE] = {};
+};
+```
+
+Each entry is an FQDN or an IP literal; empty means the slot is unused. Order is
+kept as entered, so a slot may be empty with a later one filled — the manager
+compacts them when handing them to SNTP.
+
+### NtpProfile ConfigCheck enum
+
+|Value|Meaning|
+|---|---|
+|`Ok`|usable, including "no servers at all"|
+|`BadServer`|an entry is neither a valid FQDN nor an IP literal|
+
+### NtpProfile methods
+
+```cpp
+bool getConfig(NtpConfig& out) const;
+bool setConfig(const NtpConfig& in);
+bool getServer(uint8_t index, char* out, size_t len) const;
+bool setServer(const char* str, uint8_t index = 0);
+bool isConfigured() const;
+virtual ConfigCheck checkConfig(const NtpConfig& cfg) const;
+bool saveCfg(const char* ns);
+bool loadCfg(const char* ns);
+virtual bool toJson(char* json, size_t len) const;
+bool importLegacy(const char* legacyNs);
+```
+
+`setServer()` rejects an address that is neither an FQDN nor an IP literal;
+passing `nullptr` or an empty string clears the slot. `checkConfig()` takes the
+config as a parameter, as `NetworkProfile::checkConfig()` does, so it validates a
+staged copy — but it is virtual rather than static, since a static one called
+through a base reference silently skips a subclass's own rules.
+
+Having no servers at all passes validation: that is a device told to take its
+time from DHCP, or from nowhere.
+
+**`importLegacy()`** reads servers written by a version that stored them per
+interface, under `ntp0`..`ntpN` in the network profile's own namespace. Without
+it an upgraded device would come back with no time servers and no indication why.
+Save to the new namespace afterwards. **Scheduled for removal in 1.0.0.**
 
 ---
 

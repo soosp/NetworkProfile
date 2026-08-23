@@ -12,6 +12,13 @@
 #include <IPAddress.h>
 #include <type_traits>
 #include "Host.h"
+
+// The NTP servers moved to NtpProfile, but the macro that says whether NTP
+// exists at all is needed by anything that builds on this family — and a
+// quoted include cannot reach across libraries, while <detail/...> is generic
+// enough to collide with another library's detail directory. Pulling it in from
+// the front door every consumer already includes avoids both.
+#include "detail/ntp_config.h"
 #include "detail/json_tools.h"
 #include "detail/prefs_tools.h"
 
@@ -36,18 +43,12 @@
 #if defined(ARDUINO_ARCH_AVR)
 #  define NETWORK_PROFILE_MAX_DNS_SERVERS 1     // DNSClient limitation
 #  define NETWORK_PROFILE_DEFAULT_DNS_SERVERS 1
-#  define NETWORK_PROFILE_MAX_NTP_SERVERS 1
-#  define NETWORK_PROFILE_DEFAULT_NTP_SERVERS 0 // AVR: opt-in (conserve SRAM)
 #elif defined(ARDUINO_ARCH_ESP8266)
 #  define NETWORK_PROFILE_MAX_DNS_SERVERS 2
 #  define NETWORK_PROFILE_DEFAULT_DNS_SERVERS 2
-#  define NETWORK_PROFILE_MAX_NTP_SERVERS 3
-#  define NETWORK_PROFILE_DEFAULT_NTP_SERVERS 1
 #elif defined(ARDUINO_ARCH_ESP32)
 #  define NETWORK_PROFILE_MAX_DNS_SERVERS 3     // LwIP configuration
 #  define NETWORK_PROFILE_DEFAULT_DNS_SERVERS 2 // Limited to 2 by WiFi API
-#  define NETWORK_PROFILE_MAX_NTP_SERVERS 3
-#  define NETWORK_PROFILE_DEFAULT_NTP_SERVERS 3
 #endif
 
 #ifndef NETWORK_PROFILE_DNS_SERVER_COUNT
@@ -58,13 +59,6 @@
 #  error "NETWORK_PROFILE_DNS_SERVER_COUNT must be in [1-NETWORK_PROFILE_MAX_DNS_SERVERS] range."
 #endif
 
-#ifndef NETWORK_PROFILE_NTP_SERVER_COUNT
-#  define NETWORK_PROFILE_NTP_SERVER_COUNT NETWORK_PROFILE_DEFAULT_NTP_SERVERS
-#endif
-
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT < 0) || (NETWORK_PROFILE_NTP_SERVER_COUNT > NETWORK_PROFILE_MAX_NTP_SERVERS)
-#  error "NETWORK_PROFILE_NTP_SERVER_COUNT must be in [1-NETWORK_PROFILE_MAX_NTP_SERVERS] range."
-#endif
 
 #ifndef NETWORK_PROFILE_HOSTNAME_LEN
 #  define NETWORK_PROFILE_HOSTNAME_LEN 63 // RFC 1123
@@ -80,9 +74,8 @@
  * @brief Abstract base class for network interface configuration profiles.
  *
  * Stores common IP configuration (DHCP flag, IP address, subnet mask,
- * gateway, DNS servers), device-level settings (hostname, NTP servers,
- * interface priority, MAC address), and provides thread-safe load/save
- * via Preferences on ESP platforms.
+ * gateway, DNS servers), device-level settings (hostname, interface priority,
+ * MAC address), and provides thread-safe load/save via Preferences.
  *
  * Subclasses extend _doSave(), _doLoad(), _doJson() and _initMacDefault()
  * to handle interface-specific fields (e.g. WiFi credentials, ETH MAC type).
@@ -95,8 +88,6 @@
  */
 class NetworkProfile {
 public:
-    /** @brief Number of NTP servers stored per profile. */
-    static constexpr uint8_t  NTP_SERVER_COUNT  = NETWORK_PROFILE_NTP_SERVER_COUNT;
 
     /** @brief Number of DNS servers stored per profile. */
     static constexpr uint8_t  DNS_SERVER_COUNT  = NETWORK_PROFILE_DNS_SERVER_COUNT;
@@ -128,7 +119,6 @@ public:
     /** @brief Maximum JSON content length in bytes, excluding null terminator.
      *
      * Sized to fit the worst case output of toJson(), including:
-     * - Three NTP FQDNs of 253 characters each (~780 bytes)
      * - 63-character hostname
      * - All IP fields in dotted-decimal format
      * - MAC address ("AA:BB:CC:DD:EE:FF")
@@ -208,7 +198,7 @@ public:
      * (e.g. when applying a configuration received from a web interface or
      * MQTT).
      *
-     * @note The ntp[] array holds string representations (dotted-decimal IP or
+     * @note Address fields hold string representations (dotted-decimal IP or
      *       FQDN). Each entry is validated (IP or FQDN) and stored by
      *       setConfig().
      * @note The mac[] field sets the active MAC override. To clear the
@@ -221,9 +211,6 @@ public:
         IPAddress   gateway;
         IPAddress   dns[DNS_SERVER_COUNT]                      = {};
         char        hostname[MAX_HOSTNAME_SIZE]                = {};
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
-        char        ntp[NTP_SERVER_COUNT][Host::MAX_FQDN_SIZE] = {};
-#endif
         uint8_t     priority = 0;
         MACAddress  mac      = {};
     };
@@ -235,7 +222,7 @@ public:
     /**
      * @brief Constructs a NetworkProfile with default values.
      *
-     * DHCP is enabled, all IP fields are 0.0.0.0, hostname and NTP
+     * DHCP is enabled, all IP fields are 0.0.0.0, and the hostname
      * servers are empty, priority is 0. The default MAC is generated
      * by _initMacDefault() which is called from the subclass constructor.
      */
@@ -246,9 +233,6 @@ public:
         , _gateway(IPAddress(0, 0, 0, 0))
         , _dns{}
         , _hostname{}
-    #if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
-        , _ntp{}
-    #endif
         , _priority(0)
         , _mac{}
         , _macDefault{}
@@ -462,74 +446,6 @@ public:
         return true;
     }
 
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
-    /**
-     * @brief Copies the configured NTP server (IP or FQDN) at @p index into @p out.
-     *
-     * Read under the profile's own mutex, so it composes atomically with the
-     * other getters (getConfig() captures NTP in the same lock).
-     *
-     * @param index Server index in [0, NTP_SERVER_COUNT).
-     * @param out   Destination buffer; set to "" on any failure.
-     * @param len   Size of @p out in bytes.
-     * @return true if the value (possibly empty) fit; false on invalid index,
-     *         truncation, or mutex timeout.
-     */
-    bool getNtp(uint8_t index, char* out, size_t len) const {
-        if (!out || len == 0) return false;
-        if (index >= NTP_SERVER_COUNT) { out[0] = '\0'; return false; }
-        if (!_lock()) { out[0] = '\0'; return false; }
-        int w = snprintf(out, len, "%s", _ntp[index]);
-        _unlock();
-        return (w >= 0 && (size_t)w < len);
-    }
-
-    /**
-     * @brief Sets an NTP server by string (IP address or FQDN).
-     *
-     * The string is validated as a dotted-decimal IP or an FQDN and stored.
-     * An empty string clears the slot; an invalid string leaves the entry
-     * unchanged.
-     * 
-     * @param str   Null-terminated IP address or FQDN string.
-     * @param index Index in [0, NTP_SERVER_COUNT). Clamped to 0 if out of
-     *              range. Defaults to 0.
-     * @return true on success, false if @p str is invalid.
-     */
-    bool setNtp(const char* str, uint8_t index = 0) {
-        if (index >= NTP_SERVER_COUNT) index = 0;
-        if (!str) return false;
-        // Empty clears the slot; otherwise require a dotted-decimal IP or an FQDN.
-        if (str[0] != '\0'
-            && !Host::isValidIp(str)
-            && !Host::isValidFqdn(str)) return false;
-        if (!_lock()) return false;
-        snprintf(_ntp[index], Host::MAX_FQDN_SIZE, "%s", str);
-        _unlock();
-        return true;
-    }
- 
-    /**
-     * @brief Returns true if at least one NTP server is configured in the
-     *        profile.
-     *
-     * Used by adapters to decide whether to request NTP server addresses via
-     * DHCP option 42 (when no explicit server is configured) or to rely on
-     * the explicitly configured server(s) instead.
-     *
-     * @return true if any NTP slot holds a non-empty entry, false if all are
-     *         empty or NETWORK_PROFILE_NTP_SERVER_COUNT is 0.
-     */
-    bool isConfiguredNtp() const {
-        if (!_lock()) return false;
-        bool configured = false;
-        for (uint8_t i = 0; i < NTP_SERVER_COUNT; i++) {
-            if (_ntp[i][0] != '\0') { configured = true; break; }
-        }
-        _unlock();
-        return configured;
-    }
-#endif
 
     /**
      * @brief Returns the interface priority.
@@ -709,7 +625,6 @@ public:
         BadMask,            ///< mask is not a contiguous run of 1-bits
         GatewayOffSubnet,   ///< a non-zero gateway is not on the ip/mask subnet
         BadDns,             ///< a DNS entry is set but not a usable unicast address
-        BadNtp,             ///< an NTP entry is neither a usable unicast IP nor an FQDN
         BadSsid,            ///< (WiFiProfile) ssid is empty or too long
         BadPassword,        ///< (WiFiProfile) password fails the WPA length rules
         BadTxPower,         ///< (WiFiProfile) txPower is not an allowed level
@@ -724,7 +639,7 @@ private:
              | ((uint32_t)x[2] <<  8) |  (uint32_t)x[3];
     }
 
-    /// Whether @p a could be a real unicast host/DNS/gateway/NTP address on an
+    /// Whether @p a could be a real unicast host/DNS/gateway address on an
     /// ESP interface. Rejects the ranges that never can be: 0.0.0.0/8
     /// (this-network), 127.0.0.0/8 (loopback — an ESP runs no local services),
     /// 224.0.0.0/4 (multicast) and 240.0.0.0/4 (reserved, which also covers the
@@ -778,7 +693,7 @@ public:
     /**
      * @brief Atomically sets all profile fields from a NetworkConfig struct.
      *
-     * All base fields (IP, DNS, hostname, NTP, priority, MAC) are updated in a
+     * All base fields (IP, DNS, hostname, priority, MAC) are updated in a
      * single mutex acquisition.
      *
      * @param cfg Source configuration to apply.
@@ -788,7 +703,6 @@ public:
         if (!isValidConfig(cfg)) return false;
         if (!_lock()) return false;
         _doSetConfig(cfg);
-        _doSetNtpConfig(cfg);
         _unlock();
         return true;
     }
@@ -805,7 +719,6 @@ public:
     bool getConfig(NetworkConfig& cfg) const {
         if (!_lock()) return false;
         _doGetConfig(cfg);
-        _doGetNtpConfig(cfg);
         _unlock();
         return true;
     }
@@ -830,21 +743,6 @@ public:
             ConfigCheck s = checkStatic(cfg);
             if (s != ConfigCheck::Ok) return s;
         }
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
-        // An NTP entry, if set, is either a usable unicast IP or an FQDN. The
-        // ip parse is String-free (Host::parseIp fills octets).
-        for (uint8_t i = 0; i < NTP_SERVER_COUNT; i++) {
-            if (cfg.ntp[i][0] == '\0') continue;
-            uint8_t oct[4];
-            if (Host::parseIp(cfg.ntp[i], oct)) {
-                const uint32_t u = ((uint32_t)oct[0] << 24) | ((uint32_t)oct[1] << 16)
-                                 | ((uint32_t)oct[2] <<  8) |  (uint32_t)oct[3];
-                if (!isUnicastHost(u)) return ConfigCheck::BadNtp;
-            } else if (!Host::isValidFqdn(cfg.ntp[i])) {
-                return ConfigCheck::BadNtp;
-            }
-        }
-#endif
         return ConfigCheck::Ok;
     }
 
@@ -905,7 +803,6 @@ public:
      * Output fields (base class):
      * dhcp (0/1), ip, mask, gw, dns[0, DNS_SERVER_COUNT) (dotted-decimal),
      * hostname, prio, mac (active MAC, "AA:BB:CC:DD:EE:FF")
-     * [, ntp[0, NTP_SERVER_COUNT) (dotted-decimal or FQDN)].
      * 
      * Subclasses may override _doJson() to append interface-specific fields
      * (e.g. WiFiProfile appends "ssid").
@@ -966,13 +863,6 @@ public:
         ok = ok && _fitted(snprintf_P(buf, BS, PSTR(",\"mac\":\"%s\""), macBuf), BS);
         ok = ok && _strncatJson(json, buf, len);
 
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
-        for (uint8_t i = 0; i < NTP_SERVER_COUNT; i++) {
-            char ntpKey[Host::MAX_FQDN_SIZE + 12];
-            ok = ok && _fitted(snprintf_P(ntpKey, sizeof(ntpKey), PSTR(",\"ntp%u\":\"%s\""), i, _ntp[i]), sizeof(ntpKey));
-            ok = ok && _strncatJson(json, ntpKey, len);
-        }
-#endif
 
         // JSON serialization hook for childs
         ok = ok && _doJson(json, len);
@@ -1066,9 +956,6 @@ private:
     IPAddress     _gateway;
     IPAddress     _dns[DNS_SERVER_COUNT];
     char          _hostname[MAX_HOSTNAME_SIZE];
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
-    char          _ntp[NTP_SERVER_COUNT][Host::MAX_FQDN_SIZE];
-#endif
     uint8_t       _priority;
     uint8_t       _mac[NETWORK_PROFILE_MAC_LEN];
 
@@ -1168,13 +1055,6 @@ protected:
         ok = ok && (p.putUChar( "prio", _priority)         > 0);
         ok = ok && (p.putBytes( "mac",  _mac, MAC_LEN) == MAC_LEN);
 
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
-        for (uint8_t i = 0; i < NTP_SERVER_COUNT; i++) {
-            char key[8];
-            snprintf(key, sizeof(key), "ntp%u", i);
-            ok = ok && (_putStr(p, key, _ntp[i])          > 0);
-        }
-#endif
         return ok;
     }
 
@@ -1210,14 +1090,6 @@ protected:
         p.getString("host", _hostname, MAX_HOSTNAME_SIZE);
         p.getBytes( "mac",  _mac, MAC_LEN);
 
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
-        for (uint8_t i = 0; i < NTP_SERVER_COUNT; i++) {
-            char key[8];
-            snprintf(key, sizeof(key), "ntp%u", i);
-            _ntp[i][0] = '\0';
-            p.getString(key, _ntp[i], Host::MAX_FQDN_SIZE);
-        }
-#endif
         return true;
     }
 
@@ -1226,7 +1098,7 @@ protected:
     // ------------------------------------------------------------------------
 
     /**
-     * @brief Copies all non-NTP fields from @p cfg into the profile.
+     * @brief Copies the configuration fields from @p cfg into the profile.
      *
      * Does not validate the incoming values. Called by setConfig() and
      * subclass setConfig() overrides inside a single mutex acquisition
@@ -1247,24 +1119,7 @@ protected:
     }
 
     /**
-     * @brief Copies NTP server strings from @p cfg into the profile.
-     *
-     * Call while holding _mutex.
-     * An empty string resets the corresponding NTP slot.
-     *
-     * @param cfg Source configuration struct.
-     */
-    void _doSetNtpConfig(const NetworkConfig& cfg) {
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
-        for (uint8_t i = 0; i < NTP_SERVER_COUNT; i++)
-            snprintf(_ntp[i], Host::MAX_FQDN_SIZE, "%s", cfg.ntp[i]);
-#else
-        (void)cfg;   // NTP disabled at compile time: nothing to copy
-#endif
-    }
-
-    /**
-     * @brief Copies all non-NTP fields from the profile into @p cfg.
+     * @brief Copies the configuration fields from the profile into @p cfg.
      *
      * Called by getConfig() and subclass getConfig() overrides inside a
      * single mutex acquisition to ensure a consistent snapshot.
@@ -1282,21 +1137,6 @@ protected:
         memcpy(cfg.mac, _mac, MAC_LEN);
     }
 
-    /**
-     * @brief Copies NTP server strings from the profile into @p cfg.
-     *
-     * Call while holding _mutex.
-     *
-     * @param cfg Destination configuration struct.
-     */
-    void _doGetNtpConfig(NetworkConfig& cfg) const {
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
-        for (uint8_t i = 0; i < NTP_SERVER_COUNT; i++)
-            snprintf(cfg.ntp[i], Host::MAX_FQDN_SIZE, "%s", _ntp[i]);
-#else
-        (void)cfg;   // NTP disabled at compile time: nothing to fill
-#endif
-    }
 
     // -----------------------------------------------------------------------
     // Serialization hooks and helpers

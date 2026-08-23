@@ -499,7 +499,6 @@ public:
         _ssid[MAX_SSID_LEN]         = '\0';
         _password[MAX_PASSWORD_LEN] = '\0';
         _txPower = cfg.txPower;
-        _doSetNtpConfig(cfg);
         _unlock();
         return true;
     }
@@ -520,7 +519,6 @@ public:
         strncpy(cfg.ssid,     _ssid,     MAX_SSID_SIZE);
         strncpy(cfg.password, _password, MAX_PASSWORD_SIZE);
         cfg.txPower = _txPower;
-        _doGetNtpConfig(cfg);
         _unlock();
         return true;
     }

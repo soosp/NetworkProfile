@@ -11,10 +11,62 @@ and this project adheres to
 
 ### Added
 
+- `NtpProfile` — the NTP servers as a device-level setting, with `getServer()` /
+  `setServer()`, `checkConfig()`, `saveCfg()` / `loadCfg()` and `toJson()`. A
+  device has one clock, so the servers it synchronises from belong to the device,
+  not to whichever interface is up: keeping a copy in every `NetworkProfile` meant
+  the same `pool.ntp.org` typed twice, stored twice, and carried twice in the
+  largest document the portal serves. Where interfaces really do reach different
+  time servers, two `NtpProfile` instances say so plainly.
+- `NtpProfile::importLegacy()` reads servers written by an earlier version, which
+  stored them per interface under `ntp0`..`ntpN` in the network profile's own
+  namespace. Without it an upgraded device would come back with no time servers
+  and no indication why. **Scheduled for removal in 1.0.0.**
+- `detail/ntp_config.h` holds `NTP_PROFILE_SERVER_COUNT` on its own, because two
+  callers ask different things of it: `NtpProfile.h` asks how many servers it
+  holds and refuses to be included when the answer is none, while NetworkManager
+  asks whether to compile its NTP support and must be able to ask that when the
+  answer is no.
+- `NTP_PROFILE_ENABLED` decides whether NTP exists in the build;
+  `NTP_PROFILE_SERVER_COUNT` says how many servers a profile holds, and is now a
+  count in its own right (1..3) rather than a switch that also happened to be a
+  number. Zero no longer disables anything and is refused with a message naming
+  the replacement — a profile holding no servers was never a coherent state, which
+  is why the class had to error out on it. Defaults: NTP off on AVR (the switch
+  also guards a UDP SNTP client there, not just a buffer), three servers on ESP32,
+  one everywhere else. Code sizes buffers from `NtpProfile::SERVER_COUNT` rather
+  than the macro.
+- `NTP_PROFILE_SERVER_COUNT` replaces `NETWORK_PROFILE_NTP_SERVER_COUNT`; the old
+  name is reported by a `#warning` rather than ignored, since a build still
+  passing it would silently get the default count. Zero compiles the class away
+  entirely rather than leaving an instance that cannot hold a server, and
+  including the header then fails with a message that says which macro to set —
+  the alternative being an unexplained "does not name a type" at the first use.
+  The per-architecture defaults are unchanged: 0 on AVR (opt-in, since this macro
+  also guards NetworkManager's UDP SNTP client there), 1 on ESP8266, 3 on ESP32.
 - `json_cat_esc()` in `detail/json_tools.h` — appends a string escaped, without
   a scratch buffer. A fully escaped host name needs six bytes per character, and
   a temporary that size has no business on an ESP8266 stack, least of all inside
   an async request handler. `MqttProfile::toJson()` uses it.
+
+### Documentation
+
+- README and API.md follow the split: the memory section now charges the servers
+  once to `NtpProfile` rather than per interface, and states plainly that
+  declaring no instance costs nothing. `HOST_FQDN_LEN` is called out as the most
+  effective knob, being multiplied by every profile and every NTP slot.
+
+### Removed
+
+- The NTP fields are gone from `NetworkProfile`: `getNtp()`, `setNtp()`,
+  `isConfiguredNtp()`, the `ntp[]` array in `NetworkConfig`, `NTP_SERVER_COUNT`,
+  `ConfigCheck::BadNtp`, and the `NETWORK_PROFILE_*_NTP_SERVERS` macros. Use
+  `NtpProfile`; `importLegacy()` reads what an earlier version stored.
+
+  Each profile carried its own copy — around 780 bytes for three servers — so two
+  interfaces meant the same `pool.ntp.org` stored twice and free to drift. What is
+  saved is not only the RAM: the largest document the portal serves shrinks with
+  it, and there is one place to look when the time is wrong.
 
 ### Changed
 
