@@ -243,12 +243,12 @@ most effective knob here: it is multiplied by every profile and every NTP slot.
   default.
 - **No heap allocation**: all buffers are fixed-size. The `String` type is not
   used anywhere in the library.
-- **TX power is a set, not a range** (ESP32): the radio supports a dozen
-  discrete levels, so `setTxPower()` refuses a value between two of them
-  rather than snapping to the nearest. The IDF would accept it and quietly
-  step down, which leaves a device transmitting at a power nobody chose and
-  nothing to show for it. On ESP8266 the 0.25 dBm grid is genuine and the
-  whole range is accepted.
+- **TX power is a grid, and on ESP32 a set**: `setTxPower()` refuses a value
+  that is not a multiple of 0.25 dBm rather than snapping to the nearest, on
+  both platforms. On ESP32 it goes further and accepts only the dozen discrete
+  levels the radio supports — the IDF would take anything and quietly step
+  down, which leaves a device transmitting at a power nobody chose and nothing
+  to show for it. On ESP8266 the whole 0.25 dBm grid within range is available.
 - **DHCP-provided NTP servers**: if no `NtpProfile` holds a server,
   [NetworkManager](https://github.com/soosp/NetworkManager) requests the NTP
   server address via DHCP option 42 instead of falling back to a hardcoded

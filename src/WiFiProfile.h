@@ -438,12 +438,17 @@ public:
      * @return true if the provided value is valid, false otherwise.
      *
      * "Valid" means different things per platform, and a caller building a UI
-     * needs to know which: on ESP32 the radio supports a dozen discrete levels
-     * and anything between two of them is rejected rather than snapped, so the
-     * levels in WIFI_TX_POWER_LEVELS_Q are the only accepted values. On ESP8266
-     * the 0.25 dBm grid is real and any value in
-     * [MIN_WIFI_TX_POWER_dBm, MAX_WIFI_TX_POWER_dBm] is accepted — the Arduino
-     * layer truncates to the grid itself.
+     * needs to know which. Both reject a value off the 0.25 dBm grid rather
+     * than snapping it, so a UI should offer steps rather than a free field,
+     * and both accept exactly what toJson() can print without rounding.
+     *
+     * On ESP32 the radio supports a dozen discrete levels and anything between
+     * two of them is rejected, so the levels in WIFI_TX_POWER_LEVELS_Q are the
+     * only accepted values — being on the grid is necessary but not sufficient.
+     *
+     * On ESP8266 the whole 0.25 dBm grid within
+     * [MIN_WIFI_TX_POWER_dBm, MAX_WIFI_TX_POWER_dBm] is available, so the grid
+     * check is the whole test.
      */
     static bool isValidTxPower(const float dbm) {
 #ifdef ARDUINO_ARCH_ESP32
@@ -455,9 +460,17 @@ public:
         }
         return false;
 #elif defined (ARDUINO_ARCH_ESP8266)
-        // ESP8266: range check only, the value truncated by setOutputPower()
-        // to the 0.25dBm grid automatically.
-        return (dbm >= MIN_WIFI_TX_POWER_dBm && dbm <= MAX_WIFI_TX_POWER_dBm);
+        if (dbm < MIN_WIFI_TX_POWER_dBm || dbm > MAX_WIFI_TX_POWER_dBm) return false;
+        // On the grid too, by the same "multiply by four and check for a whole
+        // number" test the ESP32 branch uses. setOutputPower() truncates to the
+        // grid on its way to the radio, so a value between two steps was
+        // accepted, stored and reported back as something the radio never
+        // produced — and a profile that answers with a figure the hardware is
+        // not using is worse than one that refuses it. It also makes the
+        // 0.25 dBm granularity that toJson() prints exact rather than rounded.
+        const float q = dbm * WIFI_TX_POWER_MULTIPLIER;      // dBm -> quarter dBm
+        const int16_t qi = (int16_t)lroundf(q);
+        return fabsf(q - (float)qi) <= 0.001f;
 #else
         return false;
 #endif
@@ -700,7 +713,13 @@ protected:
                                      escaped), sizeof(buf));
         ok = ok && NetworkProfile::_strncatJson(json, buf, len);
         // Password is intentionally omitted for security
-        ok = ok && _fitted(snprintf_P(buf, sizeof(buf), PSTR(",\"txpwr\":%f"),
+        // Two decimals, not %f's six: the accepted values sit on a 0.25 dBm
+        // grid (isValidTxPower() enforces that on both platforms), so two are
+        // exactly enough and the remaining four were always zeros. One would
+        // not do — 13.25 would come back as 13.2, and on ESP8266 the whole
+        // grid is offered, not just the halves ESP32's level set happens to
+        // use.
+        ok = ok && _fitted(snprintf_P(buf, sizeof(buf), PSTR(",\"txpwr\":%.2f"),
                                       _txPower), sizeof(buf));
         ok = ok && NetworkProfile::_strncatJson(json, buf, len);
         return ok;

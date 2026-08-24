@@ -82,6 +82,29 @@ and this project adheres to
 - To optimize memory usage, the default setting on the ESP8266 is one NTP server
   per profile. The maximum number remains three, as supported by LwIP. The
   default can be overridden using the `NETWORK_PROFILE_NTP_SERVER_COUNT` macro.
+- ESP8266: `isValidTxPower()` now also requires the value to sit on the 0.25 dBm
+  grid, not merely inside
+  [`MIN_WIFI_TX_POWER_dBm`, `MAX_WIFI_TX_POWER_dBm`]. `setOutputPower()`
+  truncates to the grid on its way to the radio, so a value between two steps
+  was accepted, stored and reported back as something the radio never produced —
+  the same silent step-down the ESP32 branch already existed to catch. The two
+  platforms now ask the same question about the grid and differ only where they
+  genuinely do: ESP32 additionally accepts just the dozen discrete levels its
+  radio offers.
+
+  `API.md` already documented ESP8266 as accepting *any multiple of 0.25 dBm*,
+  so this brings the code to the documentation rather than the other way round.
+  The prose above that table, which said every value in range was accepted,
+  contradicted it and has been corrected.
+
+  This narrows what is accepted. A stored TX power off the grid now fails
+  validation, and `loadCfg()` replaces it with `DEFAULT_WIFI_TX_POWER_dBm` as it
+  does for any other unacceptable value.
+- `toJson()` prints `txpwr` with two decimals instead of `%f`'s six
+  (`"txpwr":19.50`). Two are exact for the 0.25 dBm grid now enforced on both
+  platforms, and the other four were always zeros. One would not do: 13.25 would
+  come back as 13.2, and ESP8266 offers the whole grid, not only the halves
+  ESP32's level set happens to use.
 
 ### Fixed
 

@@ -291,7 +291,9 @@ for security.
 Output fields (base class): `dhcp`, `ip`, `mask`, `gw`, `dns0`[…`dns1`],
 `host`, `prio`, `mac`[, `ntp0`…`ntp2`].
 
-`WiFiProfile` appends `ssid` and `txpwr` via `_doJson()`.
+`WiFiProfile` appends `ssid` and `txpwr` via `_doJson()`. `txpwr` is printed
+with two decimals, which is exact for the 0.25 dBm grid `isValidTxPower()`
+enforces (`"txpwr":19.50`).
 
 Use `NetworkProfile::JSON_SIZE` as the buffer size:
 
@@ -510,10 +512,11 @@ bool  setTxPower(float dbm);
 adjusts the value to fit.
 
 **The two platforms differ, and a caller building a UI needs to know which it is
-on.** On ESP32 the radio offers a dozen discrete levels and nothing in between;
-a value between two of them is refused, not rounded, because a silently altered
-transmit power is indistinguishable from one that was applied. On ESP8266 the
-0.25 dBm grid is real, and every value in range is accepted.
+on.** Both refuse a value off the 0.25 dBm grid rather than rounding it, because
+a silently altered transmit power is indistinguishable from one that was
+applied. On top of that, ESP32 offers only a dozen discrete levels and nothing
+in between, so being on the grid is necessary but not sufficient there. On
+ESP8266 the whole grid within range is available.
 
 |Platform|Accepted values|Suitable control|
 |--|--|--|
