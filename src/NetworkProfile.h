@@ -1065,6 +1065,18 @@ protected:
      * The namespace-presence and completed-transaction checks (the "_ok"
      * marker) are handled by loadCfg() before this runs; a subclass override
      * only needs to read its own fields.
+     *
+     * Every field is reset to its default before it is read, so what this
+     * leaves behind depends only on the store and never on what the object
+     * happened to hold. That is not cosmetic: _putStr() *removes* a key whose
+     * value is empty, and Preferences::getString()/getBytes() leave the
+     * destination untouched when the key is absent — so clearing the hostname,
+     * saving, then loading into the same object would have handed back the old
+     * hostname, and the store would have been read as agreeing with it. The
+     * numeric fields already did this through getUInt()'s default argument;
+     * the string and byte fields have no such argument and need the explicit
+     * reset. A subclass override must do the same for its own fields.
+     *
      * @param p Open, read-only Preferences object.
      * @return true once the fields have been read.
      */
@@ -1087,8 +1099,10 @@ protected:
             for (uint8_t i = 0; i < DNS_SERVER_COUNT; i++) _dns[i] = IPAddress();
         }
         _priority = p.getUChar("prio", 0);
+        _hostname[0] = '\0';                    // absent key => generated default
         p.getString("host", _hostname, MAX_HOSTNAME_SIZE);
-        p.getBytes( "mac",  _mac, MAC_LEN);
+        memset(_mac, 0, MAC_LEN);               // absent key => _macDefault, since
+        p.getBytes( "mac",  _mac, MAC_LEN);     // an all-zero _mac is not valid
 
         return true;
     }

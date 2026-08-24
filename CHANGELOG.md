@@ -108,6 +108,22 @@ and this project adheres to
 
 ### Fixed
 
+- `loadCfg()` could restore a value the last save did not contain. `saveCfg()`
+  *removes* the key of an empty string rather than storing a blank, and
+  `Preferences::getString()`/`getBytes()` leave the destination untouched when a
+  key is absent — so clearing the hostname, SSID, password, MAC or MQTT broker
+  address, saving, and then loading back into the same object handed the old
+  value straight back, and the store read as agreeing with it. The affected
+  fields are now reset to their defaults before they are read, in
+  `NetworkProfile`, `WiFiProfile` and `MqttProfile` alike. The numeric fields
+  were never affected: they pass a default to the getter, which does the same
+  job. Neither was a load into a freshly constructed profile, which is the usual
+  boot path — this only ever bit a reload into a populated object, such as a
+  configuration page reverting its edits.
+
+  `MqttProfile::_doLoad()` additionally passed the *current* value as each
+  getter's default, which had the same effect on the bools and the port; it now
+  passes a default-constructed `MqttConfig`'s.
 - `WiFiProfile(const WiFiConfig&)` dropped `cfg.txPower`. The constructor applied
   the SSID and the password but left the transmit power at the platform default,
   while `setConfig(WiFiConfig)` applied all three — so the same struct produced

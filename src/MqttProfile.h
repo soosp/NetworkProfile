@@ -292,12 +292,25 @@ protected:
         return ok;
     }
 
-    /// Counterpart of _doSave(); a missing key keeps the default.
+    /**
+     * Counterpart of _doSave(). Every field is reset to its MqttConfig default
+     * before it is read, so what this leaves behind depends only on the store.
+     * The string fields need it explicitly: prefs_putStr() removes the key of
+     * an empty value and Preferences::getString() leaves the destination alone
+     * when the key is absent, so clearing the broker address, saving, then
+     * loading back into the same object would have restored the old one. The
+     * bools and the port pass their default as the getter's argument, which
+     * does the same job.
+     */
     virtual bool _doLoad(Preferences& p) {
-        _cfg.enabled = p.getBool("en", _cfg.enabled);
+        const MqttConfig def{};
+        _cfg.enabled = p.getBool("en", def.enabled);
+        _cfg.host[0] = '\0';
         p.getString("host", _cfg.host, sizeof(_cfg.host));
-        _cfg.port    = p.getUShort("port", _cfg.port);
-        _cfg.tls     = p.getBool("tls", _cfg.tls);
+        _cfg.port    = p.getUShort("port", def.port);
+        _cfg.tls     = p.getBool("tls", def.tls);
+        _cfg.user[0]     = '\0';
+        _cfg.password[0] = '\0';
         p.getString("user", _cfg.user, sizeof(_cfg.user));
         p.getString("pass", _cfg.password, sizeof(_cfg.password));
         return true;

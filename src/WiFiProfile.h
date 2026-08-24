@@ -673,12 +673,20 @@ protected:
      * that is out of range here. Falling back beats storing something the radio
      * will refuse.
      *
+     * SSID and password are emptied before they are read, for the reason given
+     * in NetworkProfile::_doLoad(): an absent key leaves the destination
+     * untouched, and _putStr() removes the key of an empty value — so clearing
+     * the credentials, saving, and loading back into the same object would
+     * otherwise have restored them.
+     *
      * @param p Open, read-only Preferences object.
      * @return true if all fields were read,
      *         false on fail of NetworkProfile::_doLoad(p).
      */
     bool _doLoad(Preferences& p) override {
         if (!NetworkProfile::_doLoad(p)) return false;
+        _ssid[0]     = '\0';
+        _password[0] = '\0';
         p.getString("ssid", _ssid,     MAX_SSID_SIZE);
         p.getString("pass", _password, MAX_PASSWORD_SIZE);
         const float pwr = p.getFloat("txpwr", DEFAULT_WIFI_TX_POWER_dBm);

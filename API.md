@@ -329,6 +329,13 @@ save (torn write), a storage failure, or mutex timeout — so a `false` return i
 the reliable "no valid saved configuration" signal used by the first-run
 pattern.
 
+`loadCfg()` resets every field to its default before reading it, so a load
+restores exactly what the last save held rather than merging into whatever the
+object already had. This matters because `saveCfg()` *removes* the key of an
+empty string instead of storing a blank: clearing the hostname, saving, then
+loading back into the same object would otherwise have handed back the old name.
+Loading into a freshly constructed profile was never affected.
+
 On `WiFiProfile`, TX power falls back to `DEFAULT_WIFI_TX_POWER_dBm` when the
 stored value is missing or outside what this build accepts, rather than being
 restored as-is. Two cases reach it: a namespace written before `txpwr` existed,
@@ -782,8 +789,10 @@ keep several brokers' settings side by side. A record is marked complete only
 after everything is written, so a save interrupted by a reset is ignored on the
 next load rather than half-applied.
 
-An empty string removes its key instead of storing a blank, so a later load falls
-back to the field's default.
+An empty string removes its key instead of storing a blank, and `loadCfg()`
+resets every field to its default before reading, so a load restores exactly
+what the last save held — an emptied broker address stays empty even when
+loading into an object that still has the old one.
 
 ### MqttProfile serialisation
 
