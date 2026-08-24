@@ -27,9 +27,13 @@
 // classes will store through the application's type.
 #if defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_ESP8266)
 #  include <Preferences.h>
-#else
+#elif defined(ARDUINO_ARCH_AVR)
 #  include <EEPROMPreferences.h>
-   using Preferences = EEPROMPreferences;
+#else
+#  error "NetworkProfile requires ESP32, ESP8266 or AVR. Porting it to another " \
+         "architecture means giving it a Preferences implementation: either a " \
+         "native one on the include path, or a class with the same interface " \
+         "aliased to Preferences, added as a branch here."
 #endif
 
 /**

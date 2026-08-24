@@ -120,6 +120,14 @@ and this project adheres to
 
 ### Changed
 
+- `detail/prefs_tools.h` names AVR instead of catching it with `#else`, and an
+  unsupported architecture now fails at the include with a message saying what a
+  port would need. `EEPROMPreferences.h` declares its class unconditionally and
+  guards only its `.cpp`, so the `#else` branch compiled on a fourth
+  architecture and then failed at link time with `undefined reference to
+  EEPROMPreferences::begin` — a long way from the cause. `NetworkProfile.h`
+  already used the narrower guard; the two now agree, and the message follows
+  the one `WiFiProfile.h` has carried for the same situation.
 - ESP8266: `isValidTxPower()` now also requires the value to sit on the 0.25 dBm
   grid, not merely inside
   [`MIN_WIFI_TX_POWER_dBm`, `MAX_WIFI_TX_POWER_dBm`]. `setOutputPower()`
