@@ -82,7 +82,28 @@ and this project adheres to
 - To optimize memory usage, the default setting on the ESP8266 is one NTP server
   per profile. The maximum number remains three, as supported by LwIP. The
   default can be overridden using the `NETWORK_PROFILE_NTP_SERVER_COUNT` macro.
-  
+
+### Fixed
+
+- `WiFiProfile(const WiFiConfig&)` dropped `cfg.txPower`. The constructor applied
+  the SSID and the password but left the transmit power at the platform default,
+  while `setConfig(WiFiConfig)` applied all three — so the same struct produced
+  two different profiles depending on whether it arrived through the constructor
+  or the setter. It is now validated and stored like the other two, and ignored
+  the same way when invalid, since a constructor cannot report a rejection.
+- `WiFiProfile::_doLoad()` could load a TX power of NAN.
+  `Preferences::getFloat()` answers a missing key with NAN unless given a
+  default, and the call passed none — so a namespace written before `txpwr`
+  existed came back with a poisoned `_txPower`, after which every
+  `isValidTxPower()` comparison against it was false and the radio never got a
+  usable value. It now falls back to `DEFAULT_WIFI_TX_POWER_dBm`, and does the
+  same for a stored value outside what this build accepts: the range is not the
+  same on both platforms (ESP32 discrete levels up to 19.5 dBm, ESP8266
+  continuous up to 20.5), so a namespace carried between them, or a build whose
+  `WIFI_PROFILE_DEFAULT_WIFI_TX_POWER` changed, can hold one the radio would
+  refuse. The rest of the profile still loads and `loadCfg()` still returns
+  `true`; only the TX power is replaced.
+
 ## [0.6.0] - 2026-08-05
 
 ### Added

@@ -327,6 +327,14 @@ save (torn write), a storage failure, or mutex timeout — so a `false` return i
 the reliable "no valid saved configuration" signal used by the first-run
 pattern.
 
+On `WiFiProfile`, TX power falls back to `DEFAULT_WIFI_TX_POWER_dBm` when the
+stored value is missing or outside what this build accepts, rather than being
+restored as-is. Two cases reach it: a namespace written before `txpwr` existed,
+and a namespace carried between platforms, since the accepted range differs
+(ESP32 takes discrete levels up to 19.5 dBm, ESP8266 a continuous range up to
+20.5). The rest of the profile still loads and `loadCfg()` still returns `true`
+— only the TX power is replaced.
+
 **`clearCfg()`** — erases the entire Preferences namespace. After calling this,
 `loadCfg()` returns `false` and a reboot will load default values.
 
@@ -444,9 +452,15 @@ explicit WiFiProfile(const NetworkConfig& cfg);
 explicit WiFiProfile(const WiFiConfig& cfg);
 ```
 
-When constructing from `WiFiConfig`, invalid SSID or password are silently
-ignored (SSID remains empty, password remains empty = open network). Base IP
+When constructing from `WiFiConfig`, an invalid SSID, password or TX power is
+silently ignored: the SSID stays empty, the password stays empty (= open
+network) and the TX power stays at `DEFAULT_WIFI_TX_POWER_dBm`. Base IP
 configuration is always applied.
+
+This is deliberately more forgiving than `setConfig(WiFiConfig)`, which rejects
+the whole struct and returns `false` if any field fails validation — a
+constructor has no way to report one. Where a rejection matters, construct
+empty and use `setConfig()`, or run `checkConfig()` on the struct first.
 
 ### Security type getter
 

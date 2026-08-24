@@ -207,12 +207,21 @@ public:
     /**
      * @brief Constructs a WiFiProfile from a WiFiConfig struct.
      *
-     * Sets all fields including SSID and password. SSID and password are
-     * validated before storing:
+     * Sets all fields including SSID, password and transmit power. Each is
+     * validated before storing, and an invalid one is silently ignored — the
+     * member keeps its default rather than the constructor failing, since a
+     * constructor has no way to report it:
      * - If the SSID is invalid, it is silently ignored and _ssid remains
      *   empty.
      * - If the password is invalid, it is silently ignored and _password
      *   remains empty (equivalent to an open network).
+     * - If the transmit power is invalid, it is silently ignored and _txPower
+     *   remains DEFAULT_WIFI_TX_POWER_dBm.
+     *
+     * This is deliberately more forgiving than setConfig(), which rejects the
+     * whole struct and returns false if any field fails. Where knowing about a
+     * rejection matters, construct empty and call setConfig(), or check with
+     * checkConfig() first.
      *
      * Base IP configuration fields are always applied regardless of
      * credential validity.
@@ -236,6 +245,13 @@ public:
         if (isValidPassword(cfg.password)) {
             strncpy(_password, cfg.password, MAX_PASSWORD_LEN);
             _password[MAX_PASSWORD_LEN] = '\0';
+        }
+        // Validate and store transmit power — if invalid, _txPower keeps the
+        // platform default. Omitting this left the constructor silently
+        // dropping cfg.txPower while setConfig() applied it, so the same
+        // struct produced two different profiles depending on how it arrived.
+        if (isValidTxPower(cfg.txPower)) {
+            _txPower = cfg.txPower;
         }
     }
 
@@ -632,6 +648,18 @@ protected:
      * reads SSID, password and transmit power from keys "ssid", "pass"
      * and "txpwr".
      *
+     * The transmit power falls back to DEFAULT_WIFI_TX_POWER_dBm when the key
+     * is missing or holds a value this build will not accept. Both happen in
+     * practice: a record written before "txpwr" existed has no key (and
+     * Preferences::getFloat() answers a missing key with NAN unless given a
+     * default, which would have poisoned _txPower and made every later
+     * setTxPower() comparison fail), and the accepted range is not the same on
+     * both platforms — ESP32 takes discrete levels up to 19.5 dBm, ESP8266 a
+     * continuous range up to 20.5 — so a namespace carried between them, or a
+     * build whose WIFI_PROFILE_DEFAULT_WIFI_TX_POWER changed, can hold a value
+     * that is out of range here. Falling back beats storing something the radio
+     * will refuse.
+     *
      * @param p Open, read-only Preferences object.
      * @return true if all fields were read,
      *         false on fail of NetworkProfile::_doLoad(p).
@@ -640,7 +668,8 @@ protected:
         if (!NetworkProfile::_doLoad(p)) return false;
         p.getString("ssid", _ssid,     MAX_SSID_SIZE);
         p.getString("pass", _password, MAX_PASSWORD_SIZE);
-        _txPower = p.getFloat("txpwr");
+        const float pwr = p.getFloat("txpwr", DEFAULT_WIFI_TX_POWER_dBm);
+        _txPower = isValidTxPower(pwr) ? pwr : DEFAULT_WIFI_TX_POWER_dBm;
         return true;
     }
 
