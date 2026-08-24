@@ -54,10 +54,10 @@ Define these **before** including any library header, or via `platformio.ini` `b
 |`HOST_FQDN_LEN`|253|1 – 253|Maximum FQDN length in `Host` objects.|
 |`HOST_FQDN_LABEL_LEN`|63|1 – 63|Maximum single label length. Must be ≤ `HOST_FQDN_LEN`.|
 |`NTP_PROFILE_ENABLED`|1, 0 on AVR|0 or 1|Whether NTP exists in the build.|
-|`NTP_PROFILE_SERVER_COUNT`|3 (ESP32), 1 elsewhere|1 – 3 (1 – 1 on AVR)|NTP server slots per profile. 0 disables NTP entirely.|
-|`NETWORK_PROFILE_DNS_SERVER_COUNT`|2 (1 on AVR)|1 – 2 (1 on AVR)|DNS server slots per profile.|
+|`NTP_PROFILE_SERVER_COUNT`|3 (ESP32), 1 elsewhere|1 – 3|NTP server slots. A count, not a switch: 0 is refused with a `#error` naming `NTP_PROFILE_ENABLED`.|
+|`NETWORK_PROFILE_DNS_SERVER_COUNT`|2 (1 on AVR)|1 – 3 on ESP32, 1 – 2 on ESP8266, 1 on AVR|DNS server slots per profile.|
 |`NETWORK_PROFILE_HOSTNAME_LEN`|63|10 – 63|Maximum hostname length. Lower bound accommodates the generated default (e.g. `ESP-02D6FC`).|
-|`NETWORK_PROFILE_JSON_LEN`|1200|—|Maximum JSON content length. Reduce after lowering other buffer sizes.|
+|`NETWORK_PROFILE_JSON_LEN`|1200|—|Maximum JSON content length. The library itself needs at most 482; the rest is headroom for subclass fields added through `_doJson()`.|
 |`NETWORK_PROFILE_MUTEX_TIMEOUT`|1000|—|Mutex acquisition timeout in milliseconds. Used on ESP32 only; ESP8266 (cooperative scheduling) and AVR (single-threaded) have no lock and ignore it.|
 |`NETWORK_PROFILE_DEFAULT_ETH_MAC`|—|—|Required on AVR platforms without a unique serial number. Format: `"4E:52:47:30:30:31"`.|
 |`WIFI_PROFILE_DEFAULT_WIFI_TX_POWER`|19.5 (ESP32) / 20.5 (ESP8266)|—|Default WiFi TX power in dBm.|
@@ -102,7 +102,7 @@ Returned by `getInterfaceType()`. Each subclass returns a compile-time constant.
 ```cpp
 enum class ConfigSource : uint8_t {
     ACTIVE  = 0,
-    DEFAULT = 1,
+    FACTORY = 1,
 };
 ```
 

@@ -38,18 +38,46 @@ and this project adheres to
   than the macro.
 - `NTP_PROFILE_SERVER_COUNT` replaces `NETWORK_PROFILE_NTP_SERVER_COUNT`; the old
   name is reported by a `#warning` rather than ignored, since a build still
-  passing it would silently get the default count. Zero compiles the class away
-  entirely rather than leaving an instance that cannot hold a server, and
-  including the header then fails with a message that says which macro to set —
-  the alternative being an unexplained "does not name a type" at the first use.
-  The per-architecture defaults are unchanged: 0 on AVR (opt-in, since this macro
-  also guards NetworkManager's UDP SNTP client there), 1 on ESP8266, 3 on ESP32.
+  passing it would silently get the default count.
 - `json_cat_esc()` in `detail/json_tools.h` — appends a string escaped, without
   a scratch buffer. A fully escaped host name needs six bytes per character, and
   a temporary that size has no business on an ESP8266 stack, least of all inside
   an async request handler. `MqttProfile::toJson()` uses it.
 
 ### Documentation
+
+- Comments and documents left behind by the NTP move and by earlier reworks are
+  corrected. `NetworkConfig`'s note described its address fields as strings
+  validated as IP-or-FQDN, which was true only while they held NTP servers; the
+  default constructor's summary read "the hostname servers are empty", a sentence
+  left half-edited when "and NTP" came out of it; and `JSON_LEN`'s sizing still
+  accounted for three NTP servers per profile, putting the worst case at ~1150
+  bytes when the real figure is now 482 (266 for an `EthProfile`). The constant
+  stays at 1200 — the headroom is for fields a subclass adds through `_doJson()`,
+  which are counted against the same buffer — but it now says so instead of
+  implying the space is spoken for.
+- The AVR persistence story is told as it is. The class header still said
+  `saveCfg()`/`loadCfg()` delegate to user-supplied callbacks and `clearCfg()`
+  claimed to be a no-op returning false there; all three have gone through
+  EEPROMPreferences for some time, and `clear()` works. The `SaveCallback` and
+  `LoadCallback` typedefs those sentences referred to are removed — they were
+  declared, never used, and never called by anything.
+- `NTP_PROFILE_SERVER_COUNT` is no longer described as disabling NTP when set to
+  zero. It is a count (1..3); zero is refused by a `#error` naming
+  `NTP_PROFILE_ENABLED`, which is the switch. `API.md` and `README.md` said
+  otherwise, and the CHANGELOG carried two entries for this macro that
+  contradicted each other — one describing the current behaviour, one still
+  claiming zero compiles the class away. The stale half is gone, as is a third
+  entry restating the ESP8266 default in terms of the obsolete
+  `NETWORK_PROFILE_NTP_SERVER_COUNT` name and of NTP servers "per profile".
+- `API.md` spelled `ConfigSource` as `ACTIVE`/`DEFAULT`; the enum is
+  `ACTIVE`/`FACTORY`, which the surrounding prose already used. The DNS range
+  was given as 1–2, but ESP32 allows 3.
+- Doxygen blocks that had drifted onto the wrong declaration are moved back.
+  `NetworkProfile::isValidConfig()` and `MqttProfile::checkConfig()` each had
+  their description sitting immediately above the *deleted* template overload
+  that follows them, so Doxygen attached it there and the real function was
+  documented by nothing.
 
 - README and API.md follow the split: the memory section now charges the servers
   once to `NtpProfile` rather than per interface, and states plainly that
@@ -79,9 +107,6 @@ and this project adheres to
 
 ### Changed
 
-- To optimize memory usage, the default setting on the ESP8266 is one NTP server
-  per profile. The maximum number remains three, as supported by LwIP. The
-  default can be overridden using the `NETWORK_PROFILE_NTP_SERVER_COUNT` macro.
 - ESP8266: `isValidTxPower()` now also requires the value to sit on the 0.25 dBm
   grid, not merely inside
   [`MIN_WIFI_TX_POWER_dBm`, `MAX_WIFI_TX_POWER_dBm`]. `setOutputPower()`

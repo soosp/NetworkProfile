@@ -119,7 +119,7 @@ The most commonly needed macros for memory optimisation:
 |--|--:|--|
 |`NETWORK_PROFILE_DNS_SERVER_COUNT`|[See Library defaults](#library-defaults)|DNS server slots.|
 |`NTP_PROFILE_ENABLED`|1, or 0 on AVR|Whether NTP exists in the build at all.|
-|`NTP_PROFILE_SERVER_COUNT`|[See Library defaults](#library-defaults)|NTP server slots, 1 to 3. Set to 0 to disable NTP entirely.|
+|`NTP_PROFILE_SERVER_COUNT`|[See Library defaults](#library-defaults)|NTP server slots, 1 to 3. A count, not a switch — use `NTP_PROFILE_ENABLED=0` to leave NTP out.|
 |`NETWORK_PROFILE_HOSTNAME_LEN`|63|Maximum hostname length.|
 |`HOST_FQDN_LEN`|253|Maximum host string (IP/FQDN) length — NTP servers, MQTT broker.|
 |`NETWORK_PROFILE_DEFAULT_ETH_MAC`|—|Required on AVR without unique serial number.|

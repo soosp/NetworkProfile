@@ -127,25 +127,6 @@ public:
     }
 
     /**
-     * @brief Checks the settings for internal consistency.
-     *
-     * Only what can be decided without a network: whether the broker will accept
-     * these credentials is not knowable here.
-     *
-     * A disabled profile always passes — its fields are not going to be used,
-     * and refusing to save a half-filled form the user has just switched off
-     * would be unhelpful.
-     *
-     * Takes the config as a parameter, like NetworkProfile::checkConfig(): a
-     * caller validates a staged copy before deciding to keep it, and touching no
-     * member state means there is nothing to lock. Virtual rather than static,
-     * though — a static one called through a base reference silently skips a
-     * subclass's own rules.
-     *
-     * @param cfg Settings to check.
-     * @return ConfigCheck::Ok, or the first problem found.
-     */
-    /**
      * @brief Refuses a subclass's config, so the omission cannot be silent.
      *
      * checkConfig() is virtual, so a subclass's rules do run through a base
@@ -166,6 +147,25 @@ public:
                   !std::is_same<MqttConfig, T>::value>::type>
     bool setConfig(const T&) = delete;
 
+    /**
+     * @brief Checks the settings for internal consistency.
+     *
+     * Only what can be decided without a network: whether the broker will accept
+     * these credentials is not knowable here.
+     *
+     * A disabled profile always passes — its fields are not going to be used,
+     * and refusing to save a half-filled form the user has just switched off
+     * would be unhelpful.
+     *
+     * Takes the config as a parameter, like NetworkProfile::checkConfig(): a
+     * caller validates a staged copy before deciding to keep it, and touching no
+     * member state means there is nothing to lock. Virtual rather than static,
+     * though — a static one called through a base reference silently skips a
+     * subclass's own rules.
+     *
+     * @param cfg Settings to check.
+     * @return ConfigCheck::Ok, or the first problem found.
+     */
     virtual ConfigCheck checkConfig(const MqttConfig& cfg) const {
         if (!cfg.enabled) return ConfigCheck::Ok;
         if (cfg.host[0] == '\0') return ConfigCheck::NoHost;

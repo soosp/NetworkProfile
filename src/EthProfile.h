@@ -77,11 +77,15 @@ protected:
      *
      * Platform-specific implementation:
      * - ESP32:   esp_read_mac(_macDefault, ESP_MAC_ETH)
-     * - ESP8266: not supported, _macDefault remains zero
+     * - ESP8266: no dedicated Ethernet MAC exists, so a locally-administered
+     *            address is derived from the WiFi STA MAC (see the body)
      * - ATmega328PB: boot_signature_byte_get() based generation
      * - Other AVR: NETWORK_PROFILE_DEFAULT_ETH_MAC string via macFromStr()
      *
-     * Generates _hostnameDefault with prefix "ETH" or "AVR".
+     * Generates _hostnameDefault with prefix "ESP" on both ESP platforms and
+     * "AVR" on AVR — the prefix names the controller, not the interface, so a
+     * device's WiFi and Ethernet profiles produce the same default hostname and
+     * whichever one serves identifies the same device.
      */
     void _initMacDefault() override {
 #if defined(ARDUINO_ARCH_ESP32)
