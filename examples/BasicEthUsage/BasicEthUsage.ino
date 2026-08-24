@@ -14,8 +14,6 @@
 // Define a custom MAC
 #define NETWORK_PROFILE_DEFAULT_MAC "4E:52:47:30:30:31"
 
-// Only one NTP server - useful on AVR platform with weak resources
-#define NETWORK_PROFILE_NTP_SERVER_COUNT 1
 
 #include <Arduino.h>
 #include <EthProfile.h>
@@ -41,7 +39,6 @@ void setup() {
     ethCfg.gateway  = IPAddress(192, 168, 1, 1);
     ethCfg.dns[0]   = IPAddress(8, 8, 8, 8);
     ethCfg.dns[1]   = IPAddress(8, 8, 4, 4);
-    strncpy(ethCfg.ntp[0], "pool.ntp.org",   Host::MAX_FQDN_LEN);
 
     if (ethProfile.setConfig(ethCfg)) {
         Serial.println("ETH profile configured (static IP)");

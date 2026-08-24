@@ -1,129 +1,190 @@
 /**
  * @file NtpConfig.ino
- * @brief NetworkProfile library — NTP configuration example (ESP32 / ESP8266)
+ * @brief NetworkProfile library — NTP server settings example (ESP32 / ESP8266)
  *
- * Focuses on the NTP server API surface, complementing BasicUsage (which
- * configures NTP only through the NetworkConfig struct). Demonstrates:
- *   - setNtp() with an FQDN, a dotted-decimal IP, an invalid string, and ""
- *   - getNtp() read-back, including empty slots, out-of-range index, and
- *     truncation into an undersized buffer
- *   - isConfiguredNtp() before and after clearing every slot
- *   - getConfig() atomic snapshot of the NTP entries
- *   - Save → load → getNtp() persistence round-trip
- *   - JSON serialisation of the NTP fields
+ * NtpProfile stores the servers a device synchronises its clock from. It holds
+ * no client and knows nothing about the protocol: starting SNTP is
+ * NetworkManager's job, and this is only what survives a reboot.
  *
- * NTP servers are stored as plain strings (validated as IP or FQDN); name
- * resolution is the SNTP client's job, handled by NetworkManager — not here.
+ * The servers belong to the device rather than to an interface — one clock, one
+ * set of servers, whichever way the traffic goes. Where interfaces genuinely
+ * reach different time servers, the answer is a second instance rather than a
+ * field per interface; the last section shows that.
+ *
+ * Demonstrates:
+ *   - setServer() with an FQDN, a dotted-decimal IP, an invalid string, and ""
+ *   - getServer() read-back, including empty slots, an out-of-range index and
+ *     an undersized buffer
+ *   - isConfigured() before and after clearing every slot
+ *   - checkConfig(), and why "no servers at all" is a valid answer
+ *   - getConfig() / setConfig() as an atomic snapshot
+ *   - Save → load persistence
+ *   - toJson() for backup
+ *   - importLegacy(), for a device upgraded from a version that stored the
+ *     servers per interface
+ *   - Two instances, for the case one device-level profile does not cover
+ *
+ * Runs without a network: nothing here connects to anything.
  */
 
 #include <Arduino.h>
-#include <WiFiProfile.h>
+#include <NtpProfile.h>
 
 // Preferences namespace for the save/load round-trip.
 static constexpr char NS_NTP[] = "net_ntp";
 
-WiFiProfile ntpProfile;
+NtpProfile ntpProfile;
+
+/// Prints every slot, so the effect of each step is visible rather than implied.
+static void dumpServers(NtpProfile& p, const char* label) {
+    Serial.printf("%s:\n", label);
+    for (uint8_t i = 0; i < NtpProfile::SERVER_COUNT; i++) {
+        char buf[Host::MAX_FQDN_SIZE];
+        const bool ok = p.getServer(i, buf, sizeof(buf));
+        Serial.printf("  [%u] %s \"%s\"\n", i, ok ? "ok   " : "false", buf);
+    }
+    Serial.printf("  isConfigured() -> %s\n", p.isConfigured() ? "true" : "false");
+}
 
 void setup() {
     Serial.begin(115200);
     while (!Serial) delay(10);
     Serial.println("\n--- NetworkProfile NtpConfig ---");
+    Serial.printf("SERVER_COUNT = %u\n\n", (unsigned)NtpProfile::SERVER_COUNT);
 
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT > 0)
-    char buf[Host::MAX_FQDN_SIZE];
+    // 1. setServer() — what is accepted and what is not
+    //
+    // An FQDN or a dotted-decimal IP; anything else is refused rather than
+    // stored, so a typo cannot become a server nobody can reach.
+    Serial.println("1. setServer()");
+    Serial.printf("   \"pool.ntp.org\"     -> %s\n",
+                  ntpProfile.setServer("pool.ntp.org", 0) ? "ok" : "rejected");
+    if (NtpProfile::SERVER_COUNT >= 2) {
+        Serial.printf("   \"216.239.35.0\"     -> %s\n",
+                      ntpProfile.setServer("216.239.35.0", 1) ? "ok" : "rejected");
+    }
+    Serial.printf("   \"999.999.999.999\"  -> %s\n",
+                  ntpProfile.setServer("999.999.999.999", 0) ? "ok" : "rejected (expected)");
+    Serial.printf("   index out of range -> %s\n\n",
+                  ntpProfile.setServer("pool.ntp.org", NtpProfile::SERVER_COUNT)
+                      ? "ok" : "rejected (expected)");
 
-    // -------------------------------------------------------------------------
-    // 1. setNtp() — accepted and rejected inputs
-    // -------------------------------------------------------------------------
-    // FQDN in slot 0, dotted-decimal IP is also valid.
-    Serial.printf("setNtp(0, \"pool.ntp.org\")   -> %s\n",
-                  ntpProfile.setNtp("pool.ntp.org", 0) ? "ok" : "rejected");
+    dumpServers(ntpProfile, "2. getServer() read-back");
+    Serial.println();
 
-#if (NETWORK_PROFILE_NTP_SERVER_COUNT >= 2)
-    Serial.printf("setNtp(1, \"216.239.35.0\")   -> %s\n",
-                  ntpProfile.setNtp("216.239.35.0", 1) ? "ok" : "rejected");
-#endif
-
-    // Neither a valid IP nor a valid FQDN — left unchanged, returns false.
-    Serial.printf("setNtp(0, \"999.999.999.999\")-> %s\n",
-                  ntpProfile.setNtp("999.999.999.999", 0) ? "ok" : "rejected (expected)");
-
-    // -------------------------------------------------------------------------
-    // 2. getNtp() — read-back of configured slots
-    // -------------------------------------------------------------------------
-    for (uint8_t i = 0; i < NetworkProfile::NTP_SERVER_COUNT; i++) {
-        bool ok = ntpProfile.getNtp(i, buf, sizeof(buf));
-        Serial.printf("getNtp(%u) -> %s \"%s\"\n", i, ok ? "true " : "false", buf);
+    // 3. Undersized buffer
+    //
+    // The value is cut to fit rather than refused: the caller asked for as much
+    // as would go in. Pass Host::MAX_FQDN_SIZE to get all of it.
+    {
+        char small[8];
+        const bool ok = ntpProfile.getServer(0, small, sizeof(small));
+        Serial.printf("3. getServer(0, small[8]) -> %s \"%s\"\n\n",
+                      ok ? "true" : "false", small);
     }
 
-    // -------------------------------------------------------------------------
-    // 3. getNtp() — edge cases
-    // -------------------------------------------------------------------------
-    // Out-of-range index: returns false, buffer set to "".
-    bool oorOk = ntpProfile.getNtp(NetworkProfile::NTP_SERVER_COUNT, buf, sizeof(buf));
-    Serial.printf("getNtp(out-of-range) -> %s \"%s\"\n",
-                  oorOk ? "true" : "false (expected)", buf);
+    // 4. checkConfig() — validation of a staged copy
+    //
+    // Takes the configuration as a parameter, so nothing is touched until it
+    // passes. No servers at all is *valid*: that is a device told to take its
+    // time from DHCP, or from nowhere, and refusing to store it would be wrong.
+    {
+        NtpProfile::NtpConfig cfg;
+        Serial.printf("4. checkConfig(empty) -> %s\n",
+                      ntpProfile.checkConfig(cfg) == NtpProfile::ConfigCheck::Ok
+                          ? "Ok (empty is a real answer)" : "BadServer");
 
-    // Truncation: an undersized buffer returns false but stays NUL-terminated.
-    char small[5];
-    bool truncOk = ntpProfile.getNtp(0, small, sizeof(small));
-    Serial.printf("getNtp(0, small[5]) -> %s \"%s\"\n",
-                  truncOk ? "true" : "false (expected)", small);
+        snprintf(cfg.server[0], sizeof(cfg.server[0]), "%s", "not a host name");
+        Serial.printf("   checkConfig(bad)   -> %s\n\n",
+                      ntpProfile.checkConfig(cfg) == NtpProfile::ConfigCheck::Ok
+                          ? "Ok" : "BadServer (expected)");
+    }
 
-    // -------------------------------------------------------------------------
-    // 4. isConfiguredNtp() — true while any slot is set
-    // -------------------------------------------------------------------------
-    Serial.printf("isConfiguredNtp() -> %s\n",
-                  ntpProfile.isConfiguredNtp() ? "true" : "false");
-
-    // -------------------------------------------------------------------------
-    // 5. getConfig() — atomic snapshot of the NTP entries
-    // -------------------------------------------------------------------------
-    WiFiProfile::WiFiConfig cfg;
-    if (ntpProfile.getConfig(cfg)) {
-        for (uint8_t i = 0; i < NetworkProfile::NTP_SERVER_COUNT; i++) {
-            Serial.printf("cfg.ntp[%u] = \"%s\"\n", i, cfg.ntp[i]);
+    // 5. getConfig() / setConfig() — the whole set at once
+    //
+    // One lock for the lot, and setConfig() replaces everything, so a
+    // half-applied set cannot be observed.
+    {
+        NtpProfile::NtpConfig cfg;
+        if (ntpProfile.getConfig(cfg)) {
+            snprintf(cfg.server[0], sizeof(cfg.server[0]), "%s", "0.pool.ntp.org");
+            Serial.printf("5. setConfig() -> %s\n",
+                          ntpProfile.setConfig(cfg) ? "ok" : "lock timeout");
         }
+        dumpServers(ntpProfile, "   after setConfig()");
+        Serial.println();
     }
 
-    // -------------------------------------------------------------------------
-    // 6. Persistence round-trip — save, load into a fresh profile, read back
-    // -------------------------------------------------------------------------
-    if (ntpProfile.saveCfg(NS_NTP)) {
-        Serial.println("profile saved");
+    // 6. Persistence
+    {
+        Serial.printf("6. saveCfg(\"%s\") -> %s\n", NS_NTP,
+                      ntpProfile.saveCfg(NS_NTP) ? "ok" : "failed");
+
+        NtpProfile loaded;
+        Serial.printf("   loadCfg()          -> %s\n",
+                      loaded.loadCfg(NS_NTP) ? "ok" : "no record");
+        dumpServers(loaded, "   loaded");
+        Serial.println();
     }
 
-    WiFiProfile loaded;
-    if (loaded.loadCfg(NS_NTP)) {
-        loaded.getNtp(0, buf, sizeof(buf));
-        Serial.printf("loaded getNtp(0) -> \"%s\"\n", buf);
+    // 7. toJson() — for a backup file
+    {
+        char json[64 + NtpProfile::SERVER_COUNT * Host::MAX_FQDN_SIZE];
+        Serial.printf("7. toJson() -> %s\n",
+                      ntpProfile.toJson(json, sizeof(json)) ? "ok" : "did not fit");
+        Serial.printf("   %s\n\n", json);
     }
 
-    // -------------------------------------------------------------------------
-    // 7. JSON serialisation (includes the ntp<N> fields)
-    // -------------------------------------------------------------------------
-    char json[NetworkProfile::JSON_SIZE];
-    if (ntpProfile.toJson(json, sizeof(json))) {
-        Serial.printf("JSON:\n%s\n", json);
+    // 8. importLegacy() — upgrading a device in the field
+    //
+    // Servers stored per interface, under ntp0..ntpN in a network profile's own
+    // namespace, are read from there once. A device flashed with this version
+    // would otherwise come back with no time servers and no indication why.
+    //
+    // Scheduled for removal in 1.0.0: call it from the firmware that performs
+    // the upgrade, then drop it.
+    {
+        NtpProfile migrated;
+        const bool found = migrated.importLegacy("net_eth");
+        Serial.printf("8. importLegacy(\"net_eth\") -> %s\n",
+                      found ? "found servers" : "nothing there (expected on a fresh device)");
+        if (found) migrated.saveCfg(NS_NTP);
+        Serial.println();
     }
 
-    // -------------------------------------------------------------------------
-    // 8. Empty string clears a slot — isConfiguredNtp() then reflects it
-    // -------------------------------------------------------------------------
-    for (uint8_t i = 0; i < NetworkProfile::NTP_SERVER_COUNT; i++) {
-        ntpProfile.setNtp("", i);
-    }
-    Serial.printf("after clearing all slots, isConfiguredNtp() -> %s\n",
-                  ntpProfile.isConfiguredNtp() ? "true" : "false (expected)");
+    // 9. Two profiles, for interfaces that really do differ
+    //
+    // The usual case is one: the same servers are reachable whichever way the
+    // device is connected. But an internal time server on a wired LAN may be
+    // unreachable over a phone hotspot, and then two instances say so plainly —
+    // where a field inside each interface's configuration said it by accident,
+    // and mostly said it twice with the same value.
+    //
+    // NetworkManager is handed whichever applies, from its CONNECTED handler:
+    // that takes effect for the handover in progress, because events reach the
+    // application earlier in the same update() pass than NTP is configured.
+    {
+        NtpProfile ethNtp, wifiNtp;
+        ethNtp.setServer("192.168.1.1", 0);          // the LAN's own server
+        wifiNtp.setServer("pool.ntp.org", 0);        // reachable from anywhere
 
-    // ntpProfile.clearCfg(NS_NTP);  // Uncomment to remove the saved data
-#else
-    Serial.println("NTP disabled (NETWORK_PROFILE_NTP_SERVER_COUNT == 0).");
-    Serial.println("Rebuild with a non-zero server count to run this example.");
-#endif
+        char a[Host::MAX_FQDN_SIZE], b[Host::MAX_FQDN_SIZE];
+        ethNtp.getServer(0, a, sizeof(a));
+        wifiNtp.getServer(0, b, sizeof(b));
+        Serial.printf("9. two profiles: wired \"%s\", wireless \"%s\"\n\n", a, b);
+    }
+
+    // 10. Clearing every slot
+    //
+    // An empty string clears a slot, and with none left isConfigured() says so.
+    // That state is stored and loaded like any other: "take NTP from DHCP" is a
+    // decision, not the absence of one.
+    for (uint8_t i = 0; i < NtpProfile::SERVER_COUNT; i++) ntpProfile.setServer("", i);
+    dumpServers(ntpProfile, "10. after clearing every slot");
+
+    Serial.println("\n--- done ---");
 }
 
 void loop() {
-    // Applying these NTP servers to the SNTP client is the NetworkManager
-    // library's job; NetworkProfile only stores and validates them.
+    delay(1000);
 }

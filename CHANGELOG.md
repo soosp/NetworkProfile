@@ -56,6 +56,15 @@ and this project adheres to
   declaring no instance costs nothing. `HOST_FQDN_LEN` is called out as the most
   effective knob, being multiplied by every profile and every NTP slot.
 
+### Examples
+
+- `NtpConfig` rewritten for `NtpProfile`: the old one exercised `setNtp()`,
+  `getNtp()` and `isConfiguredNtp()` on a `NetworkProfile`, none of which exist
+  any more, so it could not compile. It now covers the class's whole surface,
+  including `importLegacy()` for an upgraded device and the two-instance case for
+  interfaces that really do reach different servers.
+- `BasicUsage` and `BasicEthUsage` no longer write `cfg.ntp[]`, which is gone.
+
 ### Removed
 
 - The NTP fields are gone from `NetworkProfile`: `getNtp()`, `setNtp()`,

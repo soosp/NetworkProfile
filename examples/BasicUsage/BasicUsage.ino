@@ -37,7 +37,6 @@ void setup() {
     strncpy(wifiCfg.ssid,     "MyNetwork",  MAX_SSID_LEN);
     strncpy(wifiCfg.password, "MyPassword", WiFiProfile::MAX_PASSWORD_LEN);
     strncpy(wifiCfg.hostname, "esp32-node", NetworkProfile::MAX_HOSTNAME_LEN);
-    strncpy(wifiCfg.ntp[0],   "pool.ntp.org", Host::MAX_FQDN_LEN);
 
     if (wifiProfile.setConfig(wifiCfg)) {
         Serial.println("WiFi profile configured (DHCP)");
@@ -54,8 +53,6 @@ void setup() {
     ethCfg.gateway  = IPAddress(192, 168, 1, 1);
     ethCfg.dns[0]   = IPAddress(8, 8, 8, 8);
     ethCfg.dns[1]   = IPAddress(8, 8, 4, 4);
-    strncpy(ethCfg.ntp[0], "pool.ntp.org",   Host::MAX_FQDN_LEN);
-    strncpy(ethCfg.ntp[1], "time.google.com", Host::MAX_FQDN_LEN);
 
     if (ethProfile.setConfig(ethCfg)) {
         Serial.println("ETH profile configured (static IP)");
