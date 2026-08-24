@@ -20,14 +20,7 @@
 // the front door every consumer already includes avoids both.
 #include "detail/ntp_config.h"
 #include "detail/json_tools.h"
-#include "detail/prefs_tools.h"
-
-#if defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_ESP8266)
-#  include <Preferences.h>
-#elif defined(ARDUINO_ARCH_AVR)
-#  include <EEPROMPreferences.h>
-   using Preferences = EEPROMPreferences; 
-#endif
+#include "detail/prefs_tools.h"   // brings in Preferences (or its AVR stand-in)
 
 #if defined(ARDUINO_ARCH_AVR)
 #  include <avr/boot.h>

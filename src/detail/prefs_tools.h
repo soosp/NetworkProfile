@@ -9,6 +9,22 @@
 
 #include <Arduino.h>
 
+// The single place this library decides what Preferences is; every profile class
+// reaches it through here.
+//
+// AVR is named rather than left to #else. EEPROMPreferences.h declares its class
+// unconditionally and only its .cpp is AVR-guarded, so on a fourth architecture
+// an #else branch would compile and then fail at link time with an undefined
+// reference to EEPROMPreferences::begin — a long way from the actual cause.
+// Saying which architectures are supported fails at the include instead.
+//
+// No `using Preferences = EEPROMPreferences;` here, and none in NetworkProfile.h
+// either: EEPROMPreferences.h has declared it itself since 0.2.0. Repeating it
+// was legal but overrode that header's EEPROMPREFERENCES_NO_PREFERENCES_ALIAS
+// opt-out, which is a working extension point — an application can define the
+// macro, alias Preferences to its own EEPROMPreferences-compatible type (a
+// different EEPROM offset, say), include this library after it, and the profile
+// classes will store through the application's type.
 #if defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_ESP8266)
 #  include <Preferences.h>
 #else

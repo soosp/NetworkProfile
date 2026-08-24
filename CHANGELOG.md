@@ -95,6 +95,19 @@ and this project adheres to
 
 ### Removed
 
+- The library's two `using Preferences = EEPROMPreferences;` declarations, one in
+  `NetworkProfile.h` and one in `detail/prefs_tools.h`. `EEPROMPreferences.h` has
+  declared the alias itself since 0.2.0, so both were redundant — and the one in
+  `NetworkProfile.h` was doubly so, sitting below an include of `prefs_tools.h`
+  that had already brought it in.
+
+  Redeclaring an alias to the same type is legal, which is why this went
+  unnoticed, but it overrode `EEPROMPREFERENCES_NO_PREFERENCES_ALIAS` — and that
+  macro is a working extension point, not just a collision escape. An application
+  can define it, alias `Preferences` to its own EEPROMPreferences-compatible type
+  (a different EEPROM offset, for instance), include this library afterwards, and
+  the profile classes will store through the application's type. Our copies made
+  the macro look available while quietly cancelling it.
 - The NTP fields are gone from `NetworkProfile`: `getNtp()`, `setNtp()`,
   `isConfiguredNtp()`, the `ntp[]` array in `NetworkConfig`, `NTP_SERVER_COUNT`,
   `ConfigCheck::BadNtp`, and the `NETWORK_PROFILE_*_NTP_SERVERS` macros. Use
