@@ -127,6 +127,36 @@ and this project adheres to
 
 ### Changed
 
+- `NtpProfile::setConfig()` and `MqttProfile::setConfig()` validate what they are
+  given, through their own `checkConfig()`, and store nothing unless it passes.
+  Both classes already had the check written; it simply was not wired in, so the
+  same object accepted through `setConfig()` what it refused through
+  `setServer()`. A stored address the resolver will never accept is a clock that
+  silently never syncs, or a broker never reached — the kind of failure that
+  looks like a network fault.
+
+  The three profile families now answer the same way: `setConfig()` refuses an
+  invalid struct everywhere. `checkConfig()` here is virtual, so unlike
+  `NetworkProfile`'s static `isValidConfig()`, a subclass's own rules apply
+  through it automatically.
+
+  What still passes is unchanged where it matters: an `NtpProfile` with every
+  slot empty is a device told to take its time from DHCP, and a disabled
+  `MqttProfile` keeps whatever half-filled form the user switched off. The
+  portal pattern — stage a config, check it, keep it — works as before; it just
+  no longer matters whether the check was remembered.
+
+  This is a tightening. A struct that `setConfig()` used to swallow is now
+  refused, and a `getConfig()` → edit → `setConfig()` round-trip of something
+  loaded from an older or hand-edited namespace can fail where it did not.
+  `loadCfg()` and `importLegacy()` deliberately stay permissive: the check
+  belongs where a new value arrives, not where an existing one is recovered.
+- `NtpProfile` and `MqttProfile` gained `configCheckName()`, matching
+  `NetworkProfile`'s. Each class has its own `ConfigCheck` enum, so one shared
+  function could not have covered them; without their own, a caller reporting
+  *which* field was refused had to write the switch that the third class had
+  been given. Now that `setConfig()` can refuse, the name is what makes the
+  refusal reportable.
 - `detail/prefs_tools.h` names AVR instead of catching it with `#else`, and an
   unsupported architecture now fails at the include with a message saying what a
   port would need. `EEPROMPreferences.h` declares its class unconditionally and

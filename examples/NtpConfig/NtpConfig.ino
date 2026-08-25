@@ -103,13 +103,21 @@ void setup() {
     // 5. getConfig() / setConfig() — the whole set at once
     //
     // One lock for the lot, and setConfig() replaces everything, so a
-    // half-applied set cannot be observed.
+    // half-applied set cannot be observed. It validates the struct exactly as
+    // setServer() validates one entry, so which of the two a caller reaches for
+    // does not decide whether the check happens.
     {
         NtpProfile::NtpConfig cfg;
         if (ntpProfile.getConfig(cfg)) {
             snprintf(cfg.server[0], sizeof(cfg.server[0]), "%s", "0.pool.ntp.org");
-            Serial.printf("5. setConfig() -> %s\n",
-                          ntpProfile.setConfig(cfg) ? "ok" : "lock timeout");
+            Serial.print("5. setConfig() -> ");
+            if (ntpProfile.setConfig(cfg)) {
+                Serial.println("ok");
+            } else {
+                Serial.print("rejected: ");
+                Serial.println(
+                    NtpProfile::configCheckName(ntpProfile.checkConfig(cfg)));
+            }
         }
         dumpServers(ntpProfile, "   after setConfig()");
         Serial.println();

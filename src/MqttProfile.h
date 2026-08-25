@@ -93,6 +93,27 @@ public:
         PasswordWithoutUser ///< A password with no username to go with it.
     };
 
+    /**
+     * @brief Names a ConfigCheck value, for logs and configuration UIs.
+     *
+     * Counterpart of NetworkProfile::configCheckName() for this class's own
+     * enum — the two are separate types, so a caller needs whichever belongs to
+     * the profile it asked. Flash-resident, so printing costs no RAM on AVR.
+     *
+     * @param c Value to name.
+     * @return Flash-resident string, printable with Serial.print().
+     */
+    static const __FlashStringHelper* configCheckName(ConfigCheck c) {
+        switch (c) {
+            case ConfigCheck::Ok:                  return F("ok");
+            case ConfigCheck::NoHost:              return F("no broker address");
+            case ConfigCheck::BadHost:             return F("invalid broker address");
+            case ConfigCheck::BadPort:             return F("invalid port");
+            case ConfigCheck::PasswordWithoutUser: return F("password without username");
+        }
+        return F("unknown");
+    }
+
     virtual ~MqttProfile() = default;
 
     /**
@@ -114,12 +135,25 @@ public:
 
     /**
      * @brief Replaces the current settings.
-     * @note Nothing is validated here; call checkConfig() when it matters. The
-     *       split matters for the portal, which stages a config, checks it, and
-     *       only then keeps it.
-     * @return false if the lock could not be obtained; nothing was changed.
+     *
+     * Validated as a whole through checkConfig(), so a broker address the
+     * resolver will never accept cannot reach storage. The portal pattern is
+     * unchanged — stage a config, check it, keep it — this only means the last
+     * step no longer depends on the first having been done.
+     *
+     * A disabled profile still passes whatever its other fields hold, so a
+     * half-filled form the user has switched off is kept, as before.
+     *
+     * Nothing is written unless the whole struct passes, so a rejected call
+     * leaves the previous settings intact rather than half-replaced. Use
+     * checkConfig() first where the reason matters; configCheckName() turns the
+     * result into text.
+     *
+     * @return false if @p in was refused or the lock could not be obtained;
+     *         either way nothing was changed.
      */
     bool setConfig(const MqttConfig& in) {
+        if (checkConfig(in) != ConfigCheck::Ok) return false;
         if (!_lock()) return false;
         _cfg = in;
         _unlock();

@@ -78,6 +78,24 @@ public:
         BadServer   ///< An entry is neither a valid FQDN nor an IP literal.
     };
 
+    /**
+     * @brief Names a ConfigCheck value, for logs and configuration UIs.
+     *
+     * Counterpart of NetworkProfile::configCheckName() for this class's own
+     * enum — the two are separate types, so a caller needs whichever belongs to
+     * the profile it asked. Flash-resident, so printing costs no RAM on AVR.
+     *
+     * @param c Value to name.
+     * @return Flash-resident string, printable with Serial.print().
+     */
+    static const __FlashStringHelper* configCheckName(ConfigCheck c) {
+        switch (c) {
+            case ConfigCheck::Ok:        return F("ok");
+            case ConfigCheck::BadServer: return F("invalid NTP server");
+        }
+        return F("unknown");
+    }
+
     virtual ~NtpProfile() = default;
 
     /**
@@ -93,10 +111,27 @@ public:
 
     /**
      * @brief Replaces the stored servers.
-     * @note Nothing is validated here; call checkConfig() when it matters.
-     * @return false if the lock could not be obtained; nothing was changed.
+     *
+     * Validated as a whole through checkConfig(), so this refuses exactly what
+     * setServer() refuses — an entry that is neither an FQDN nor an IP literal
+     * — and for the same reason: a stored address the resolver will never
+     * accept is a clock that silently never syncs. Reaching the two through the
+     * same object should not decide whether the check happens.
+     *
+     * Empty slots stay valid. "No servers at all" is a configuration, not a
+     * failure: it is how an interface is told to take the time server its DHCP
+     * lease offers.
+     *
+     * Nothing is written unless the whole struct passes, so a rejected call
+     * leaves the previous servers intact rather than half-replaced. Use
+     * checkConfig() first where the reason matters; configCheckName() turns the
+     * result into text.
+     *
+     * @return false if @p in was refused or the lock could not be obtained;
+     *         either way nothing was changed.
      */
     bool setConfig(const NtpConfig& in) {
+        if (checkConfig(in) != ConfigCheck::Ok) return false;
         if (!_lock()) return false;
         _cfg = in;
         _unlock();

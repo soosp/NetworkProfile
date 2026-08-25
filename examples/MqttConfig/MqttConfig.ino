@@ -111,7 +111,10 @@ void setup() {
     // -------------------------------------------------------------------------
     cfg.tls  = true;
     cfg.port = MqttProfile::DEFAULT_TLS_PORT;
-    if (!mqtt.setConfig(cfg)) Serial.println(F("setConfig failed (lock timeout)"));
+    if (!mqtt.setConfig(cfg)) {
+        Serial.print(F("setConfig rejected: "));
+        Serial.println(MqttProfile::configCheckName(mqtt.checkConfig(cfg)));
+    }
 
     // -------------------------------------------------------------------------
     // 4. Persistence round-trip
@@ -135,7 +138,10 @@ void setup() {
     //    so a later load falls back to the default instead of an empty string.
     // -------------------------------------------------------------------------
     cfg.password[0] = '\0';
-    mqtt.setConfig(cfg);
+    if (!mqtt.setConfig(cfg)) {
+        Serial.print(F("setConfig rejected: "));
+        Serial.println(MqttProfile::configCheckName(mqtt.checkConfig(cfg)));
+    }
     mqtt.saveCfg(NS_MQTT);
 
     // -------------------------------------------------------------------------

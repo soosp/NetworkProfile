@@ -270,12 +270,12 @@ bool setConfig(const NetworkConfig& cfg);
 bool getConfig(NetworkConfig& cfg) const;
 ```
 
-**`setConfig()`** — atomically updates all base fields (IP, DNS, hostname, NTP,
-priority, MAC) in a single mutex acquisition. Hostname and NTP entries are
-validated before the mutex is acquired — the profile is not modified if
-validation fails.
+**`setConfig()`** — atomically updates all base fields (IP, DNS, hostname,
+priority, MAC) in a single mutex acquisition. The struct is validated before the
+mutex is acquired — the profile is not modified if validation fails. NTP servers
+are not among these fields; they live in `NtpProfile`.
 
-**`getConfig()`** — atomically reads all base fields, including NTP, in a single
+**`getConfig()`** — atomically reads all base fields in a single
 mutex acquisition. The `mac` field in the returned struct contains the active
 MAC override (may be all zeros if no override is set).
 
@@ -599,6 +599,10 @@ if (!wifiProfile.setConfig(cfg)) {
 It names the field, not the remedy — a UI knows better than this library how to
 phrase advice to its user.
 
+`NtpProfile` and `MqttProfile` each carry their own `ConfigCheck` enum and their
+own `configCheckName()`. The three are separate types, so use whichever belongs
+to the profile that refused.
+
 ---
 
 ## EthProfile class
@@ -691,14 +695,22 @@ bool importLegacy(const char* legacyNs);
 ```
 
 `setServer()` rejects an address that is neither an FQDN nor an IP literal;
-passing `nullptr` or an empty string clears the slot. `checkConfig()` takes the
-config as a parameter, as `NetworkProfile::checkConfig()` does, so it validates
-a
-staged copy — but it is virtual rather than static, since a static one called
-through a base reference silently skips a subclass's own rules.
+passing `nullptr` or an empty string clears the slot. `setConfig()` applies the
+same rule to the whole struct through `checkConfig()`, so which of the two a
+caller reaches for does not decide whether the check happens; nothing is stored
+unless the struct passes. `configCheckName()` turns a `ConfigCheck` into text.
+
+`checkConfig()` takes the config as a parameter, as `NetworkProfile::checkConfig()`
+does, so it validates a staged copy — but it is virtual rather than static, since
+a static one called through a base reference silently skips a subclass's own
+rules. `setConfig()` calls it virtually, so those rules apply there too.
 
 Having no servers at all passes validation: that is a device told to take its
 time from DHCP, or from nowhere.
+
+`loadCfg()` and `importLegacy()` do not validate what they read — a namespace
+written by an older build, or edited by hand, is loaded as it stands. The
+tightening is on the writing side, where a new value arrives.
 
 **`importLegacy()`** reads servers written by a version that stored them per
 interface, under `ntp0`..`ntpN` in the network profile's own namespace. Without
@@ -777,7 +789,10 @@ failure `getConfig()` leaves `out` untouched and `setConfig()` changes nothing.
 The lock matters because the struct is copied field by field: a portal saving
 while a client task reads would otherwise hand out half of each.
 
-`setConfig()` does not validate — stage a config, check it, then keep it.
+`setConfig()` validates the struct through `checkConfig()` and stores nothing
+unless it passes, so a rejected call leaves the previous settings intact. The
+stage-check-keep pattern still works; it just no longer matters whether the
+check was remembered. `configCheckName()` turns the result into text.
 
 ### MqttProfile validation
 
