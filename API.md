@@ -692,7 +692,8 @@ bool importLegacy(const char* legacyNs);
 
 `setServer()` rejects an address that is neither an FQDN nor an IP literal;
 passing `nullptr` or an empty string clears the slot. `checkConfig()` takes the
-config as a parameter, as `NetworkProfile::checkConfig()` does, so it validates a
+config as a parameter, as `NetworkProfile::checkConfig()` does, so it validates
+a
 staged copy — but it is virtual rather than static, since a static one called
 through a base reference silently skips a subclass's own rules.
 

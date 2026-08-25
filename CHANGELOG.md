@@ -18,7 +18,6 @@ and this project adheres to
   callers reported nothing, or skipped the check. The string is flash-resident,
   costing no RAM on AVR, and names the field rather than the remedy: a UI knows
   better than this library how to phrase advice to its user.
-
 - `NtpProfile` — the NTP servers as a device-level setting, with `getServer()` /
   `setServer()`, `checkConfig()`, `saveCfg()` / `loadCfg()` and `toJson()`. A
   device has one clock, so the servers it synchronises from belong to the device,
@@ -86,7 +85,6 @@ and this project adheres to
   their description sitting immediately above the *deleted* template overload
   that follows them, so Doxygen attached it there and the real function was
   documented by nothing.
-
 - README and API.md follow the split: the memory section now charges the servers
   once to `NtpProfile` rather than per interface, and states plainly that
   declaring no instance costs nothing. `HOST_FQDN_LEN` is called out as the most
@@ -122,7 +120,8 @@ and this project adheres to
   `NtpProfile`; `importLegacy()` reads what an earlier version stored.
 
   Each profile carried its own copy — around 780 bytes for three servers — so two
-  interfaces meant the same `pool.ntp.org` stored twice and free to drift. What is
+  interfaces meant the same `pool.ntp.org` stored twice and free to drift. What
+  is
   saved is not only the RAM: the largest document the portal serves shrinks with
   it, and there is one place to look when the time is wrong.
 
