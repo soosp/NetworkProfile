@@ -624,12 +624,20 @@ explicit EthProfile(const NetworkConfig& cfg);
 The NTP servers a device synchronises from. A standalone class in this library,
 like `MqttProfile` — it does not extend `NetworkProfile`.
 
-Device-level on purpose: a device has one clock, so the servers belong to it and
-not to whichever interface is up. Where interfaces genuinely reach different time
-servers — an internal one on a wired LAN, a public pool over a hotspot — keep two
-instances and hand the manager whichever applies, from its CONNECTED handler.
-That takes effect for the handoff in progress: the manager dispatches events to
-the application earlier in the same `update()` pass than it configures NTP.
+Device-level by default: a device has one clock, so the servers belong to it and
+not to whichever interface is up. Hand one to
+`NetworkManager::setNtpProfile()` and every interface uses it.
+
+Where interfaces genuinely reach different time servers — an internal one on a
+wired LAN, a public pool over a hotspot — keep two instances and bind each to its
+interface with `NetworkAdapter::setNtpProfile()`. An adapter's own profile wins;
+unbound adapters keep using the device-level one.
+
+Binding rather than re-aiming the device-level profile as the serving interface
+changes, because the manager has to know whether an interface should take DHCP's
+time server (option 42) *before* it starts that interface — lwIP settles the
+question during the handshake — and at that moment no event has told the
+application which interface is taking over.
 
 Two objects say that plainly; a field inside each interface's configuration said
 it by accident, and usually said it twice with the same value.

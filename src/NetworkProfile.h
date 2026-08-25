@@ -1093,10 +1093,10 @@ protected:
      * leaves behind depends only on the store and never on what the object
      * happened to hold. That is not cosmetic: _putStr() *removes* a key whose
      * value is empty, and Preferences::getString()/getBytes() leave the
-     * destination untouched when the key is absent — so clearing the hostname,
-     * saving, then loading into the same object would have handed back the old
-     * hostname, and the store would have been read as agreeing with it. The
-     * numeric fields already did this through getUInt()'s default argument;
+     * destination untouched when the key is absent — so without the reset,
+     * clearing the hostname, saving, then loading into the same object would
+     * hand the old hostname straight back, and the store would read as agreeing
+     * with it. The numeric fields get this from getUInt()'s default argument;
      * the string and byte fields have no such argument and need the explicit
      * reset. A subclass override must do the same for its own fields.
      *

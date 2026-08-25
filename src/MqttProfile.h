@@ -137,9 +137,9 @@ public:
      * @brief Replaces the current settings.
      *
      * Validated as a whole through checkConfig(), so a broker address the
-     * resolver will never accept cannot reach storage. The portal pattern is
-     * unchanged — stage a config, check it, keep it — this only means the last
-     * step no longer depends on the first having been done.
+     * resolver will never accept cannot reach storage. The stage-check-keep
+     * pattern a configuration portal uses still works as it reads; the check
+     * here simply means the keeping does not depend on it having been done.
      *
      * A disabled profile still passes whatever its other fields hold, so a
      * half-filled form the user has switched off is kept, as before.
@@ -331,10 +331,10 @@ protected:
      * before it is read, so what this leaves behind depends only on the store.
      * The string fields need it explicitly: prefs_putStr() removes the key of
      * an empty value and Preferences::getString() leaves the destination alone
-     * when the key is absent, so clearing the broker address, saving, then
-     * loading back into the same object would have restored the old one. The
-     * bools and the port pass their default as the getter's argument, which
-     * does the same job.
+     * when the key is absent — so without the reset, clearing the broker
+     * address, saving, then loading back into the same object would hand the
+     * old one straight back. The bools and the port pass their default as the
+     * getter's argument, which does the same job.
      */
     virtual bool _doLoad(Preferences& p) {
         const MqttConfig def{};

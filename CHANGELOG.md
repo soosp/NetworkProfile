@@ -53,6 +53,35 @@ and this project adheres to
 
 ### Documentation
 
+- Comments that explained the code by what it used to be are reworded to explain
+  it by what it must do. A reader who never saw the earlier version cannot check
+  a sentence like "would have restored the old one" against anything; the same
+  point stated as a consequence — "without the reset, loading back into the same
+  object would hand the old one straight back" — needs no such memory. Affects
+  `_doLoad()` in `NetworkProfile`, `WiFiProfile` and `MqttProfile`, and
+  `MqttProfile::setConfig()`. The development history itself belongs here, in
+  this file.
+- The superseded way of giving interfaces different NTP servers is corrected in
+  `API.md`, `README.md` and the `NtpConfig` example. All three said to keep two
+  profiles and swap them on the manager from its `CONNECTED` handler; the
+  binding now lives on the adapter, because the manager settles the DHCP
+  option-42 question before it starts an interface and no event has said which
+  interface is taking over that early. The change was made in `NetworkManager`,
+  so these were left behind.
+- `README.md`'s memory table said an `NtpProfile` is charged once for the device
+  rather than per interface. One instance is the usual case and the reason the
+  servers moved out of the network profiles, but per-interface instances are now
+  a supported choice and cost accordingly.
+- `NtpProfile::getServer()` said it returns false for a short buffer. It
+  truncates with `snprintf()` and reports true, which is what the accessor above
+  it in `NetworkManager` already documented. The doxygen now says so, and says
+  why it matters: a truncated host name is a different server, not a partial
+  answer.
+- `API.md` still listed NTP among the fields `NetworkProfile::setConfig()` and
+  `getConfig()` carry, and claimed NTP entries were validated there. They moved
+  to `NtpProfile`.
+- `library.properties` described the library as WiFiProfile and EthProfile with
+  NTP among their fields. It names all four classes now.
 - Comments and documents left behind by the NTP move and by earlier reworks are
   corrected. `NetworkConfig`'s note described its address fields as strings
   validated as IP-or-FQDN, which was true only while they held NTP servers; the

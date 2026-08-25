@@ -153,11 +153,16 @@ per interface:
 |`_hostnameDefault`|`NETWORK_PROFILE_HOSTNAME_LEN + 1`|**64 bytes**|
 |`_dns[]`|`DNS_SERVER_COUNT × 4`|**8 bytes**|
 
-`NtpProfile` is charged once for the device, not per interface:
+`NtpProfile` is charged per instance, and one instance is the usual case — the
+servers used to be a copy inside every interface's profile:
 
 |Field|Formula|Default size|
 |--|--|--|
 |`NtpConfig::server[]`|`NtpProfile::SERVER_COUNT × (HOST_FQDN_LEN + 1)`|3 × 254 = **762 bytes**|
+
+A device whose interfaces reach different time servers declares one per
+interface and pays for each, which is the same arithmetic as before the split —
+the difference is that it is now a choice rather than the only option.
 
 Declaring no `NtpProfile` costs nothing at all: no instance, no buffers, and the
 linker drops the code.
@@ -278,19 +283,21 @@ then the answer is a second instance rather than a field per interface:
 ```cpp
 NtpProfile ethNtp, wifiNtp;      // one per interface
 
-NetworkManager.onEvent([](NetworkManagerClass::Event e, NetworkAdapter& a) {
-    if (e == NetworkManagerClass::Event::CONNECTED)
-        NetworkManager.setNtpProfile(
-            a.getProfile().getInterfaceType() == NetworkProfile::InterfaceType::WIFI
-                ? wifiNtp : ethNtp);
-});
+ethAdapter.setNtpProfile(ethNtp);      // in setup(), before begin()
+wifiAdapter.setNtpProfile(wifiNtp);
 ```
 
-Switching from the CONNECTED handler applies to *that* handoff, not the next one:
-the manager dispatches events to the application earlier in the same `update()`
-pass than it configures NTP. `NetworkManager`'s FallbackTestRunner example relies
-on exactly this — it gives the two interfaces different servers so the log shows
-which one the SNTP client actually ended up using.
+Bound to the interface rather than swapped on the manager as the serving
+interface changes. The manager has to know whether an interface should take
+DHCP's time server (option 42) *before* it starts that interface, since lwIP
+settles the question during the handshake — and at that moment no event has told
+the application which interface is taking over. Only the adapter carries the
+answer that early.
+
+An adapter without a profile of its own falls back to the device-level one, so
+the two mix: bind only the interface that differs. `NetworkManager`'s
+FallbackTestRunner example gives its two interfaces different servers so the log
+shows which one the SNTP client actually ended up using.
 
 Two objects say "these interfaces see different time servers" plainly. The field
 buried in each interface's configuration said it by accident, and mostly said it

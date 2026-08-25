@@ -665,7 +665,7 @@ protected:
      * is missing or holds a value this build will not accept. Both happen in
      * practice: a record written before "txpwr" existed has no key (and
      * Preferences::getFloat() answers a missing key with NAN unless given a
-     * default, which would have poisoned _txPower and made every later
+     * default, which would poison _txPower and make every later
      * setTxPower() comparison fail), and the accepted range is not the same on
      * both platforms — ESP32 takes discrete levels up to 19.5 dBm, ESP8266 a
      * continuous range up to 20.5 — so a namespace carried between them, or a
@@ -677,7 +677,7 @@ protected:
      * in NetworkProfile::_doLoad(): an absent key leaves the destination
      * untouched, and _putStr() removes the key of an empty value — so clearing
      * the credentials, saving, and loading back into the same object would
-     * otherwise have restored them.
+     * otherwise restore them.
      *
      * @param p Open, read-only Preferences object.
      * @return true if all fields were read,

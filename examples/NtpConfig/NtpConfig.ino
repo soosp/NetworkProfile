@@ -168,9 +168,11 @@ void setup() {
     // where a field inside each interface's configuration said it by accident,
     // and mostly said it twice with the same value.
     //
-    // NetworkManager is handed whichever applies, from its CONNECTED handler:
-    // that takes effect for the handover in progress, because events reach the
-    // application earlier in the same update() pass than NTP is configured.
+    // Each is bound to its interface with NetworkAdapter::setNtpProfile(), not
+    // swapped on the manager as the serving interface changes: the manager has
+    // to know whether an interface should take DHCP's time server before it
+    // starts that interface, and no event has said which one is taking over
+    // that early.
     {
         NtpProfile ethNtp, wifiNtp;
         ethNtp.setServer("192.168.1.1", 0);          // the LAN's own server

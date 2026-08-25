@@ -140,10 +140,18 @@ public:
 
     /**
      * @brief Reads one server.
+     *
+     * A buffer too small for the address gets what fits, and this still reports
+     * true — a caller cannot tell a truncated host name from a whole one, and a
+     * truncated one is a different server rather than a partial answer. Size
+     * @p out at Host::MAX_FQDN_SIZE, which always holds whatever setServer()
+     * accepted.
+     *
      * @param index Slot, below SERVER_COUNT.
      * @param out   Filled with the address, or an empty string for an unused slot.
      * @param len   Size of @p out.
-     * @return false on a bad index, a short buffer, or a lock timeout.
+     * @return false on a bad index, a null or zero-length buffer, or a lock
+     *         timeout. Truncation is not reported.
      */
     bool getServer(uint8_t index, char* out, size_t len) const {
         if (index >= SERVER_COUNT || !out || len == 0) return false;
