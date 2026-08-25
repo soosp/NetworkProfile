@@ -584,6 +584,21 @@ for the rest. Returns `ConfigCheck`.
 **`isValidConfig()`** — whole WiFi-config validity as a `bool`; wraps
 `checkConfig()`.
 
+**`NetworkProfile::configCheckName()`** — names a `ConfigCheck` value for logs and
+configuration UIs, so a caller can report *which* field was refused without
+writing the same switch every time. The string is flash-resident, so printing it
+costs no RAM on AVR:
+
+```cpp
+if (!wifiProfile.setConfig(cfg)) {
+    Serial.print(F("rejected: "));
+    Serial.println(NetworkProfile::configCheckName(WiFiProfile::checkConfig(cfg)));
+}
+```
+
+It names the field, not the remedy — a UI knows better than this library how to
+phrase advice to its user.
+
 ---
 
 ## EthProfile class

@@ -621,6 +621,38 @@ public:
         BadTxPower,         ///< (WiFiProfile) txPower is not an allowed level
     };
 
+    /**
+     * @brief Names a ConfigCheck value, for logs and configuration UIs.
+     *
+     * checkConfig() exists so a caller can say *which* field was refused rather
+     * than only that something was; without a name for the value, every caller
+     * has to write the same switch. The text names the field, not the remedy —
+     * a UI knows better than this library how to phrase advice to its user.
+     *
+     * Held in flash on AVR, so printing it costs no RAM:
+     * @code
+     * Serial.print(F("rejected: "));
+     * Serial.println(NetworkProfile::configCheckName(profile.checkConfig(cfg)));
+     * @endcode
+     *
+     * @param c Value to name.
+     * @return Flash-resident string, printable with Serial.print().
+     */
+    static const __FlashStringHelper* configCheckName(ConfigCheck c) {
+        switch (c) {
+            case ConfigCheck::Ok:               return F("ok");
+            case ConfigCheck::BadHostname:      return F("invalid hostname");
+            case ConfigCheck::BadIp:            return F("invalid IP address");
+            case ConfigCheck::BadMask:          return F("invalid subnet mask");
+            case ConfigCheck::GatewayOffSubnet: return F("gateway outside the subnet");
+            case ConfigCheck::BadDns:           return F("invalid DNS address");
+            case ConfigCheck::BadSsid:          return F("invalid SSID");
+            case ConfigCheck::BadPassword:      return F("invalid password");
+            case ConfigCheck::BadTxPower:       return F("unsupported TX power");
+        }
+        return F("unknown");
+    }
+
 private:
     /// The address as a plain 32-bit value, most-significant octet first. Not
     /// IPAddress::operator uint32_t(), which is endianness-dependent and would

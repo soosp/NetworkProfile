@@ -11,6 +11,14 @@ and this project adheres to
 
 ### Added
 
+- `NetworkProfile::configCheckName()`, naming a `ConfigCheck` value for logs and
+  configuration UIs. `checkConfig()` exists so a caller can report *which* field
+  was refused rather than only that something was, but with no name for the
+  value every caller had to write the same nine-case switch — so in practice
+  callers reported nothing, or skipped the check. The string is flash-resident,
+  costing no RAM on AVR, and names the field rather than the remedy: a UI knows
+  better than this library how to phrase advice to its user.
+
 - `NtpProfile` — the NTP servers as a device-level setting, with `getServer()` /
   `setServer()`, `checkConfig()`, `saveCfg()` / `loadCfg()` and `toJson()`. A
   device has one clock, so the servers it synchronises from belong to the device,
