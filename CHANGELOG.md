@@ -9,6 +9,43 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- `loadCfg()` could restore a value the last save did not contain. `saveCfg()`
+  *removes* the key of an empty string rather than storing a blank, and
+  `Preferences::getString()`/`getBytes()` leave the destination untouched when a
+  key is absent — so clearing the hostname, SSID, password, MAC or MQTT broker
+  address, saving, and then loading back into the same object handed the old
+  value straight back, and the store read as agreeing with it. The affected
+  fields are now reset to their defaults before they are read, in
+  `NetworkProfile`, `WiFiProfile` and `MqttProfile` alike. The numeric fields
+  were never affected: they pass a default to the getter, which does the same
+  job. Neither was a load into a freshly constructed profile, which is the usual
+  boot path — this only ever bit a reload into a populated object, such as a
+  configuration page reverting its edits.
+
+  `MqttProfile::_doLoad()` additionally passed the *current* value as each
+  getter's default, which had the same effect on the bools and the port; it now
+  passes a default-constructed `MqttConfig`'s.
+- `WiFiProfile(const WiFiConfig&)` dropped `cfg.txPower`. The constructor applied
+  the SSID and the password but left the transmit power at the platform default,
+  while `setConfig(WiFiConfig)` applied all three — so the same struct produced
+  two different profiles depending on whether it arrived through the constructor
+  or the setter. It is now validated and stored like the other two, and ignored
+  the same way when invalid, since a constructor cannot report a rejection.
+- `WiFiProfile::_doLoad()` could load a TX power of NAN.
+  `Preferences::getFloat()` answers a missing key with NAN unless given a
+  default, and the call passed none — so a namespace written before `txpwr`
+  existed came back with a poisoned `_txPower`, after which every
+  `isValidTxPower()` comparison against it was false and the radio never got a
+  usable value. It now falls back to `DEFAULT_WIFI_TX_POWER_dBm`, and does the
+  same for a stored value outside what this build accepts: the range is not the
+  same on both platforms (ESP32 discrete levels up to 19.5 dBm, ESP8266
+  continuous up to 20.5), so a namespace carried between them, or a build whose
+  `WIFI_PROFILE_DEFAULT_WIFI_TX_POWER` changed, can hold one the radio would
+  refuse. The rest of the profile still loads and `loadCfg()` still returns
+  `true`; only the TX power is replaced.
+
 ### Added
 
 - `NetworkProfile::configCheckName()`, naming a `ConfigCheck` value for logs and
@@ -50,6 +87,96 @@ and this project adheres to
   a scratch buffer. A fully escaped host name needs six bytes per character, and
   a temporary that size has no business on an ESP8266 stack, least of all inside
   an async request handler. `MqttProfile::toJson()` uses it.
+
+### Changed
+
+- `NtpProfile::setConfig()` and `MqttProfile::setConfig()` validate what they are
+  given, through their own `checkConfig()`, and store nothing unless it passes.
+  Both classes already had the check written; it simply was not wired in, so the
+  same object accepted through `setConfig()` what it refused through
+  `setServer()`. A stored address the resolver will never accept is a clock that
+  silently never syncs, or a broker never reached — the kind of failure that
+  looks like a network fault.
+
+  The three profile families now answer the same way: `setConfig()` refuses an
+  invalid struct everywhere. `checkConfig()` here is virtual, so unlike
+  `NetworkProfile`'s static `isValidConfig()`, a subclass's own rules apply
+  through it automatically.
+
+  What still passes is unchanged where it matters: an `NtpProfile` with every
+  slot empty is a device told to take its time from DHCP, and a disabled
+  `MqttProfile` keeps whatever half-filled form the user switched off. The
+  portal pattern — stage a config, check it, keep it — works as before; it just
+  no longer matters whether the check was remembered.
+
+  This is a tightening. A struct that `setConfig()` used to swallow is now
+  refused, and a `getConfig()` → edit → `setConfig()` round-trip of something
+  loaded from an older or hand-edited namespace can fail where it did not.
+  `loadCfg()` and `importLegacy()` deliberately stay permissive: the check
+  belongs where a new value arrives, not where an existing one is recovered.
+- `NtpProfile` and `MqttProfile` gained `configCheckName()`, matching
+  `NetworkProfile`'s. Each class has its own `ConfigCheck` enum, so one shared
+  function could not have covered them; without their own, a caller reporting
+  *which* field was refused had to write the switch that the third class had
+  been given. Now that `setConfig()` can refuse, the name is what makes the
+  refusal reportable.
+- `detail/prefs_tools.h` names AVR instead of catching it with `#else`, and an
+  unsupported architecture now fails at the include with a message saying what a
+  port would need. `EEPROMPreferences.h` declares its class unconditionally and
+  guards only its `.cpp`, so the `#else` branch compiled on a fourth
+  architecture and then failed at link time with `undefined reference to
+  EEPROMPreferences::begin` — a long way from the cause. `NetworkProfile.h`
+  already used the narrower guard; the two now agree, and the message follows
+  the one `WiFiProfile.h` has carried for the same situation.
+- ESP8266: `isValidTxPower()` now also requires the value to sit on the 0.25 dBm
+  grid, not merely inside
+  [`MIN_WIFI_TX_POWER_dBm`, `MAX_WIFI_TX_POWER_dBm`]. `setOutputPower()`
+  truncates to the grid on its way to the radio, so a value between two steps
+  was accepted, stored and reported back as something the radio never produced —
+  the same silent step-down the ESP32 branch already existed to catch. The two
+  platforms now ask the same question about the grid and differ only where they
+  genuinely do: ESP32 additionally accepts just the dozen discrete levels its
+  radio offers.
+
+  `API.md` already documented ESP8266 as accepting *any multiple of 0.25 dBm*,
+  so this brings the code to the documentation rather than the other way round.
+  The prose above that table, which said every value in range was accepted,
+  contradicted it and has been corrected.
+
+  This narrows what is accepted. A stored TX power off the grid now fails
+  validation, and `loadCfg()` replaces it with `DEFAULT_WIFI_TX_POWER_dBm` as it
+  does for any other unacceptable value.
+- `toJson()` prints `txpwr` with two decimals instead of `%f`'s six
+  (`"txpwr":19.50`). Two are exact for the 0.25 dBm grid now enforced on both
+  platforms, and the other four were always zeros. One would not do: 13.25 would
+  come back as 13.2, and ESP8266 offers the whole grid, not only the halves
+  ESP32's level set happens to use.
+
+### Removed
+
+- The library's two `using Preferences = EEPROMPreferences;` declarations, one in
+  `NetworkProfile.h` and one in `detail/prefs_tools.h`. `EEPROMPreferences.h` has
+  declared the alias itself since 0.2.0, so both were redundant — and the one in
+  `NetworkProfile.h` was doubly so, sitting below an include of `prefs_tools.h`
+  that had already brought it in.
+
+  Redeclaring an alias to the same type is legal, which is why this went
+  unnoticed, but it overrode `EEPROMPREFERENCES_NO_PREFERENCES_ALIAS` — and that
+  macro is a working extension point, not just a collision escape. An application
+  can define it, alias `Preferences` to its own EEPROMPreferences-compatible type
+  (a different EEPROM offset, for instance), include this library afterwards, and
+  the profile classes will store through the application's type. Our copies made
+  the macro look available while quietly cancelling it.
+- The NTP fields are gone from `NetworkProfile`: `getNtp()`, `setNtp()`,
+  `isConfiguredNtp()`, the `ntp[]` array in `NetworkConfig`, `NTP_SERVER_COUNT`,
+  `ConfigCheck::BadNtp`, and the `NETWORK_PROFILE_*_NTP_SERVERS` macros. Use
+  `NtpProfile`; `importLegacy()` reads what an earlier version stored.
+
+  Each profile carried its own copy — around 780 bytes for three servers — so two
+  interfaces meant the same `pool.ntp.org` stored twice and free to drift. What
+  is
+  saved is not only the RAM: the largest document the portal serves shrinks with
+  it, and there is one place to look when the time is wrong.
 
 ### Documentation
 
@@ -127,133 +254,6 @@ and this project adheres to
   including `importLegacy()` for an upgraded device and the two-instance case for
   interfaces that really do reach different servers.
 - `BasicUsage` and `BasicEthUsage` no longer write `cfg.ntp[]`, which is gone.
-
-### Removed
-
-- The library's two `using Preferences = EEPROMPreferences;` declarations, one in
-  `NetworkProfile.h` and one in `detail/prefs_tools.h`. `EEPROMPreferences.h` has
-  declared the alias itself since 0.2.0, so both were redundant — and the one in
-  `NetworkProfile.h` was doubly so, sitting below an include of `prefs_tools.h`
-  that had already brought it in.
-
-  Redeclaring an alias to the same type is legal, which is why this went
-  unnoticed, but it overrode `EEPROMPREFERENCES_NO_PREFERENCES_ALIAS` — and that
-  macro is a working extension point, not just a collision escape. An application
-  can define it, alias `Preferences` to its own EEPROMPreferences-compatible type
-  (a different EEPROM offset, for instance), include this library afterwards, and
-  the profile classes will store through the application's type. Our copies made
-  the macro look available while quietly cancelling it.
-- The NTP fields are gone from `NetworkProfile`: `getNtp()`, `setNtp()`,
-  `isConfiguredNtp()`, the `ntp[]` array in `NetworkConfig`, `NTP_SERVER_COUNT`,
-  `ConfigCheck::BadNtp`, and the `NETWORK_PROFILE_*_NTP_SERVERS` macros. Use
-  `NtpProfile`; `importLegacy()` reads what an earlier version stored.
-
-  Each profile carried its own copy — around 780 bytes for three servers — so two
-  interfaces meant the same `pool.ntp.org` stored twice and free to drift. What
-  is
-  saved is not only the RAM: the largest document the portal serves shrinks with
-  it, and there is one place to look when the time is wrong.
-
-### Changed
-
-- `NtpProfile::setConfig()` and `MqttProfile::setConfig()` validate what they are
-  given, through their own `checkConfig()`, and store nothing unless it passes.
-  Both classes already had the check written; it simply was not wired in, so the
-  same object accepted through `setConfig()` what it refused through
-  `setServer()`. A stored address the resolver will never accept is a clock that
-  silently never syncs, or a broker never reached — the kind of failure that
-  looks like a network fault.
-
-  The three profile families now answer the same way: `setConfig()` refuses an
-  invalid struct everywhere. `checkConfig()` here is virtual, so unlike
-  `NetworkProfile`'s static `isValidConfig()`, a subclass's own rules apply
-  through it automatically.
-
-  What still passes is unchanged where it matters: an `NtpProfile` with every
-  slot empty is a device told to take its time from DHCP, and a disabled
-  `MqttProfile` keeps whatever half-filled form the user switched off. The
-  portal pattern — stage a config, check it, keep it — works as before; it just
-  no longer matters whether the check was remembered.
-
-  This is a tightening. A struct that `setConfig()` used to swallow is now
-  refused, and a `getConfig()` → edit → `setConfig()` round-trip of something
-  loaded from an older or hand-edited namespace can fail where it did not.
-  `loadCfg()` and `importLegacy()` deliberately stay permissive: the check
-  belongs where a new value arrives, not where an existing one is recovered.
-- `NtpProfile` and `MqttProfile` gained `configCheckName()`, matching
-  `NetworkProfile`'s. Each class has its own `ConfigCheck` enum, so one shared
-  function could not have covered them; without their own, a caller reporting
-  *which* field was refused had to write the switch that the third class had
-  been given. Now that `setConfig()` can refuse, the name is what makes the
-  refusal reportable.
-- `detail/prefs_tools.h` names AVR instead of catching it with `#else`, and an
-  unsupported architecture now fails at the include with a message saying what a
-  port would need. `EEPROMPreferences.h` declares its class unconditionally and
-  guards only its `.cpp`, so the `#else` branch compiled on a fourth
-  architecture and then failed at link time with `undefined reference to
-  EEPROMPreferences::begin` — a long way from the cause. `NetworkProfile.h`
-  already used the narrower guard; the two now agree, and the message follows
-  the one `WiFiProfile.h` has carried for the same situation.
-- ESP8266: `isValidTxPower()` now also requires the value to sit on the 0.25 dBm
-  grid, not merely inside
-  [`MIN_WIFI_TX_POWER_dBm`, `MAX_WIFI_TX_POWER_dBm`]. `setOutputPower()`
-  truncates to the grid on its way to the radio, so a value between two steps
-  was accepted, stored and reported back as something the radio never produced —
-  the same silent step-down the ESP32 branch already existed to catch. The two
-  platforms now ask the same question about the grid and differ only where they
-  genuinely do: ESP32 additionally accepts just the dozen discrete levels its
-  radio offers.
-
-  `API.md` already documented ESP8266 as accepting *any multiple of 0.25 dBm*,
-  so this brings the code to the documentation rather than the other way round.
-  The prose above that table, which said every value in range was accepted,
-  contradicted it and has been corrected.
-
-  This narrows what is accepted. A stored TX power off the grid now fails
-  validation, and `loadCfg()` replaces it with `DEFAULT_WIFI_TX_POWER_dBm` as it
-  does for any other unacceptable value.
-- `toJson()` prints `txpwr` with two decimals instead of `%f`'s six
-  (`"txpwr":19.50`). Two are exact for the 0.25 dBm grid now enforced on both
-  platforms, and the other four were always zeros. One would not do: 13.25 would
-  come back as 13.2, and ESP8266 offers the whole grid, not only the halves
-  ESP32's level set happens to use.
-
-### Fixed
-
-- `loadCfg()` could restore a value the last save did not contain. `saveCfg()`
-  *removes* the key of an empty string rather than storing a blank, and
-  `Preferences::getString()`/`getBytes()` leave the destination untouched when a
-  key is absent — so clearing the hostname, SSID, password, MAC or MQTT broker
-  address, saving, and then loading back into the same object handed the old
-  value straight back, and the store read as agreeing with it. The affected
-  fields are now reset to their defaults before they are read, in
-  `NetworkProfile`, `WiFiProfile` and `MqttProfile` alike. The numeric fields
-  were never affected: they pass a default to the getter, which does the same
-  job. Neither was a load into a freshly constructed profile, which is the usual
-  boot path — this only ever bit a reload into a populated object, such as a
-  configuration page reverting its edits.
-
-  `MqttProfile::_doLoad()` additionally passed the *current* value as each
-  getter's default, which had the same effect on the bools and the port; it now
-  passes a default-constructed `MqttConfig`'s.
-- `WiFiProfile(const WiFiConfig&)` dropped `cfg.txPower`. The constructor applied
-  the SSID and the password but left the transmit power at the platform default,
-  while `setConfig(WiFiConfig)` applied all three — so the same struct produced
-  two different profiles depending on whether it arrived through the constructor
-  or the setter. It is now validated and stored like the other two, and ignored
-  the same way when invalid, since a constructor cannot report a rejection.
-- `WiFiProfile::_doLoad()` could load a TX power of NAN.
-  `Preferences::getFloat()` answers a missing key with NAN unless given a
-  default, and the call passed none — so a namespace written before `txpwr`
-  existed came back with a poisoned `_txPower`, after which every
-  `isValidTxPower()` comparison against it was false and the radio never got a
-  usable value. It now falls back to `DEFAULT_WIFI_TX_POWER_dBm`, and does the
-  same for a stored value outside what this build accepts: the range is not the
-  same on both platforms (ESP32 discrete levels up to 19.5 dBm, ESP8266
-  continuous up to 20.5), so a namespace carried between them, or a build whose
-  `WIFI_PROFILE_DEFAULT_WIFI_TX_POWER` changed, can hold one the radio would
-  refuse. The rest of the profile still loads and `loadCfg()` still returns
-  `true`; only the TX power is replaced.
 
 ## [0.6.0] - 2026-08-05
 
