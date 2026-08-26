@@ -48,6 +48,18 @@ and this project adheres to
 
 ### Added
 
+- `NtpProfile::clearCfg()` and `MqttProfile::clearCfg()`, matching
+  `NetworkProfile`'s. Both classes could write a namespace and read it back but
+  not erase it, which left a factory reset unable to finish the job: a device
+  wiped of its network configuration still came back holding the time servers it
+  synchronised from and — worse — the broker's address and the credentials for
+  it. `MqttProfile` leaves the password out of `toJson()` precisely because a
+  backup file travels, so leaving it in flash through a reset was the same
+  concern answered two different ways.
+
+  Same contract as `NetworkProfile::clearCfg()`, including that it clears the
+  store rather than the object: the instance keeps what it holds until something
+  loads over it.
 - `NetworkProfile::configCheckName()`, naming a `ConfigCheck` value for logs and
   configuration UIs. `checkConfig()` exists so a caller can report *which* field
   was refused rather than only that something was, but with no name for the

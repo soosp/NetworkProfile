@@ -251,6 +251,31 @@ public:
     }
 
     /**
+     * @brief Erases the whole namespace @p ns.
+     *
+     * The counterpart of saveCfg(), and what a factory reset needs: without it
+     * a device wiped of its network configuration would still come back holding
+     * the broker's address and the credentials for it.
+     *
+     * Clears the store, not this object. The instance keeps whatever it holds
+     * until something loads over it — construct fresh, or restart, to be sure
+     * the two agree.
+     *
+     * @param ns Preferences namespace to erase.
+     * @return true if the namespace was erased; false on a null namespace, a
+     *         storage failure, or a lock timeout.
+     */
+    bool clearCfg(const char* ns) {
+        if (!ns) return false;
+        if (!_lock()) return false;
+        Preferences p;
+        bool ok = p.begin(ns, false);
+        if (ok) { ok = p.clear(); p.end(); }
+        _unlock();
+        return ok;
+    }
+
+    /**
      * @brief Renders the settings as a JSON object, for backup.
      *
      * The password is left out, as it is everywhere else: a backup file travels

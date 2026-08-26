@@ -698,6 +698,7 @@ bool isConfigured() const;
 virtual ConfigCheck checkConfig(const NtpConfig& cfg) const;
 bool saveCfg(const char* ns);
 bool loadCfg(const char* ns);
+bool clearCfg(const char* ns);
 virtual bool toJson(char* json, size_t len) const;
 bool importLegacy(const char* legacyNs);
 ```
@@ -715,6 +716,10 @@ rules. `setConfig()` calls it virtually, so those rules apply there too.
 
 Having no servers at all passes validation: that is a device told to take its
 time from DHCP, or from nowhere.
+
+`clearCfg()` erases the whole namespace — the counterpart of `saveCfg()`, and
+what a factory reset needs. It clears the store, not the object: the instance
+keeps what it holds until something loads over it.
 
 `loadCfg()` and `importLegacy()` do not validate what they read — a namespace
 written by an older build, or edited by hand, is loaded as it stands. The
@@ -821,12 +826,17 @@ reference — see [Extending it](#extending-mqttprofile).
 ```cpp
 bool saveCfg(const char* ns);
 bool loadCfg(const char* ns);
+bool clearCfg(const char* ns);
 ```
 
 Same shape as `NetworkProfile`: the namespace is the caller's, so one device can
 keep several brokers' settings side by side. A record is marked complete only
 after everything is written, so a save interrupted by a reset is ignored on the
 next load rather than half-applied.
+
+`clearCfg()` erases the whole namespace — the counterpart of `saveCfg()`, and
+what a factory reset needs, since a device wiped of its network configuration
+would otherwise still come back holding the broker's address and credentials.
 
 An empty string removes its key instead of storing a blank, and `loadCfg()`
 resets every field to its default before reading, so a load restores exactly

@@ -268,6 +268,31 @@ public:
     }
 
     /**
+     * @brief Erases the whole namespace @p ns.
+     *
+     * The counterpart of saveCfg(), and what a factory reset needs: without it
+     * a device wiped of its network configuration would still come back holding
+     * the time servers it used to synchronise from.
+     *
+     * Clears the store, not this object. The instance keeps whatever it holds
+     * until something loads over it — construct fresh, or restart, to be sure
+     * the two agree.
+     *
+     * @param ns Preferences namespace to erase.
+     * @return true if the namespace was erased; false on a null namespace, a
+     *         storage failure, or a lock timeout.
+     */
+    bool clearCfg(const char* ns) {
+        if (!ns) return false;
+        if (!_lock()) return false;
+        Preferences p;
+        bool ok = p.begin(ns, false);
+        if (ok) { ok = p.clear(); p.end(); }
+        _unlock();
+        return ok;
+    }
+
+    /**
      * @brief Reads servers stored per interface, under `ntp0`..`ntpN` in a
      *        network profile's own namespace.
      *
