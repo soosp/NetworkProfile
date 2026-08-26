@@ -749,13 +749,13 @@ MqttProfile mqtt;
 
 ### MqttProfile constants
 
-| Constant | Default | Meaning |
-| --- | --- | --- |
-| `MAX_USER_LEN` / `MAX_USER_SIZE` | 32 / 33 | username, excluding / including the terminator |
-| `MAX_PASSWORD_LEN` / `MAX_PASSWORD_SIZE` | 64 / 65 | password, likewise |
-| `DEFAULT_PORT` | 1883 | plain MQTT |
-| `DEFAULT_TLS_PORT` | 8883 | MQTT over TLS |
-| `MUTEX_TIMEOUT` | 1000 | ms a bulk operation waits for the lock (ESP32) |
+|Constant|Default|Meaning|
+|---|---|---|
+|`MAX_USER_LEN` / `MAX_USER_SIZE`|32 / 33|username, excluding / including the terminator|
+|`MAX_PASSWORD_LEN` / `MAX_PASSWORD_SIZE`|64 / 65|password, likewise|
+|`DEFAULT_PORT`|1883|plain MQTT|
+|`DEFAULT_TLS_PORT`|8883|MQTT over TLS|
+|`MUTEX_TIMEOUT`|1000|ms a bulk operation waits for the lock (ESP32)|
 
 Override `MQTT_PROFILE_MAX_USER_LEN`, `MQTT_PROFILE_MAX_PASSWORD_LEN` and
 `MQTT_PROFILE_MUTEX_TIMEOUT` through build flags.
@@ -782,13 +782,13 @@ constants, but guessing would overwrite a deliberate choice.
 
 ### MqttProfile ConfigCheck enum
 
-| Value | Meaning |
-| --- | --- |
-| `Ok` | usable as it stands |
-| `NoHost` | enabled, but no broker address |
-| `BadHost` | not a valid FQDN or IP literal |
-| `BadPort` | port is zero |
-| `PasswordWithoutUser` | a password with no username to go with it |
+|Value|Meaning|
+|---|---|
+|`Ok`|usable as it stands|
+|`NoHost`|enabled, but no broker address|
+|`BadHost`|not a valid FQDN or IP literal|
+|`BadPort`|port is zero|
+|`PasswordWithoutUser`|a password with no username to go with it|
 
 ### MqttProfile configuration
 
