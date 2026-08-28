@@ -764,12 +764,13 @@ Override `MQTT_PROFILE_MAX_USER_LEN`, `MQTT_PROFILE_MAX_PASSWORD_LEN` and
 
 ```cpp
 struct MqttConfig {
-    bool     enabled  = false;
+    bool     enabled     = false;
     char     host[Host::MAX_FQDN_SIZE] = {};   // FQDN or IP literal
-    uint16_t port     = DEFAULT_PORT;
-    bool     tls      = false;
+    uint16_t port        = DEFAULT_PORT;
+    bool     tls         = false;
     char     user[MAX_USER_SIZE]         = {}; // empty: anonymous
     char     password[MAX_PASSWORD_SIZE] = {};
+    bool     haDiscovery = false;              // publish HA discovery messages
 };
 ```
 
@@ -779,6 +780,47 @@ taken off the broker for a while should not have to forget its address to do it.
 
 Changing `tls` does not change `port`. The two well-known ports are offered as
 constants, but guessing would overwrite a deliberate choice.
+
+#### Why `haDiscovery` is a base field
+
+Home Assistant's MQTT discovery is a broker-side convention: a device publishes
+retained messages under a well-known prefix, and Home Assistant creates the
+entities from them. Topics are still absent from this struct, and the distinction
+is not a fine one — a topic is an address only a project can know, while this is
+a yes/no about a convention. `MqttProfile` stores the flag and nothing more: it
+publishes nothing, and knows nothing about Home Assistant beyond the name.
+
+The obvious alternative is a subclass carrying the flag, which the virtual
+`_doSave()` / `_doLoad()` / `toJson()` hooks support perfectly well — it would
+share the namespace, the save, the backup and the factory reset, so nothing is
+lost on the storage side. Two things decide against it.
+
+**The flag has no natural siblings.** The argument for a subclass is that a
+second discovery convention would want a second flag, and then a third. But two
+booleans of which at most one may be true is a worse model than one enum, so the
+honest evolution is a type change here rather than a new field elsewhere:
+
+```cpp
+enum class DiscoveryFormat : uint8_t { None = 0, HomeAssistant, Homie };
+```
+
+If that day comes, `_doLoad()` reads the old `hadisc` boolean as a fallback and
+derives the initial value from it. Doing it today would be premature: a
+two-entry dropdown reading "None / Home Assistant" is a worse control than a
+checkbox.
+
+**A subclass field is invisible to the config page.** `MqttConfigComponent`
+holds a `MqttProfile&` and works through `getConfig(MqttConfig&)` /
+`setConfig(const MqttConfig&)`, so it cannot see a derived field. Reaching one
+would need a general "extra fields" hook in the component, a duplicate component
+for one row, or a template — each costing more than the flag saves.
+
+It defaults to `false`, and records written before the field existed load as
+`false` too, which is what those devices were doing.
+
+`AsyncConfigPortal`'s `MqttConfigComponent` renders the matching switch when
+`attach()` is called with `withHaDiscovery`, and reports a change through
+`Changed::haDiscovery`.
 
 ### MqttProfile ConfigCheck enum
 
@@ -849,9 +891,11 @@ loading into an object that still has the old one.
 virtual bool toJson(char* json, size_t len) const;
 ```
 
-For backup. **The password is not included** — a backup file travels through mail
-and cloud storage, and a broker credential in it is a credential leaked. The
-Wi-Fi profile makes the same trade: restoring one needs the password typed again.
+For backup. Carries `enabled`, `host`, `port`, `tls`, `user` and `haDiscovery`.
+
+**The password is not included** — a backup file travels through mail and cloud
+storage, and a broker credential in it is a credential leaked. The Wi-Fi profile
+makes the same trade: restoring one needs the password typed again.
 
 Returns `false` and empties `json` if the document did not fit, rather than
 leaving half of one.
@@ -862,16 +906,20 @@ A project that stores one more setting subclasses rather than patching the
 library:
 
 ```cpp
-class HaMqttProfile : public MqttProfile {
+class TopicMqttProfile : public MqttProfile {
 public:
-    struct HaConfig : public MqttConfig { bool discovery = false; };
+    struct TopicConfig : public MqttConfig { char baseTopic[64] = {}; };
     using MqttProfile::checkConfig;                     // keep the base overload visible
-    ConfigCheck checkConfig(const HaConfig& cfg) const {
-        if (cfg.discovery && !cfg.enabled) return ConfigCheck::NoHost;
+    ConfigCheck checkConfig(const TopicConfig& cfg) const {
+        if (cfg.enabled && !cfg.baseTopic[0]) return ConfigCheck::NoHost;
         return MqttProfile::checkConfig(static_cast<const MqttConfig&>(cfg));
     }
 };
 ```
+
+A base topic is the right kind of thing to add this way: only the project knows
+its naming scheme. `haDiscovery` was once an example here and is now a base
+field — see [Why `haDiscovery` is a base field](#why-hadiscovery-is-a-base-field).
 
 Override `_doSave()` / `_doLoad()` (calling the base first) to persist the extra
 field, and `toJson()` to include it.

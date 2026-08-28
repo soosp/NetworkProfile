@@ -19,7 +19,7 @@
  * @code
  * class TemperatureMonitorMqttProfile : public MqttProfile {
  * public:
- *     struct Config : MqttProfile::MqttConfig { bool haDiscovery = false; };
+ *     struct Config : MqttProfile::MqttConfig { char topic[64] = {}; };
  *     // override _doSave/_doLoad/checkConfig/toJson to carry the extra field
  * };
  * @endcode
@@ -82,6 +82,24 @@ public:
         /// Empty username means an anonymous connection.
         char     user[MAX_USER_SIZE] = {};
         char     password[MAX_PASSWORD_SIZE] = {};
+
+        /**
+         * Whether the application should publish Home Assistant MQTT discovery
+         * messages. Topics remain absent by design — those are project-specific
+         * addresses; this is a yes/no about a broker-side convention.
+         *
+         * A base field rather than a subclass's, for two reasons. It has no
+         * natural siblings: a second discovery convention would make this an
+         * enum (None / HomeAssistant / Homie) rather than add a second boolean,
+         * and _doLoad() would read this key as the fallback. And a derived field
+         * would be invisible to MqttConfigComponent, which works through
+         * MqttConfig — showing it would need an extra-fields hook, a duplicate
+         * component, or a template. See API.md.
+         *
+         * Off by default: discovery is an optional layer, and a device that has
+         * never been told to publish it should not.
+         */
+        bool     haDiscovery = false;
     };
 
     /** @brief Result of checkConfig(). */
@@ -310,7 +328,12 @@ public:
 
         ok = ok && json_cat_P(json, PSTR(",\"user\":\""), len);
         ok = ok && json_cat_esc(json, _cfg.user, len);
-        ok = ok && json_cat_P(json, PSTR("\"}"), len);
+        ok = ok && json_cat_P(json, PSTR("\""), len);
+
+        ok = ok && json_cat_P(json, PSTR(",\"haDiscovery\":"), len);
+        ok = ok && json_cat_P(json, _cfg.haDiscovery ? PSTR("true") : PSTR("false"), len);
+
+        ok = ok && json_cat_P(json, PSTR("}"), len);
 
         _unlock();
 
@@ -348,6 +371,7 @@ protected:
         ok = ok && p.putBool("tls", _cfg.tls);
         ok = ok && prefs_putStr(p, "user", _cfg.user);
         ok = ok && prefs_putStr(p, "pass", _cfg.password);
+        ok = ok && p.putBool("hadisc", _cfg.haDiscovery);
         return ok;
     }
 
@@ -372,6 +396,9 @@ protected:
         _cfg.password[0] = '\0';
         p.getString("user", _cfg.user, sizeof(_cfg.user));
         p.getString("pass", _cfg.password, sizeof(_cfg.password));
+        // Absent in records written before this field existed; the default is
+        // off, which is what such a device was doing.
+        _cfg.haDiscovery = p.getBool("hadisc", def.haDiscovery);
         return true;
     }
 };

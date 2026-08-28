@@ -9,6 +9,16 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `MqttProfile::MqttConfig` gains `haDiscovery`, a flag for whether the
+  application should publish Home Assistant MQTT discovery messages. Topics
+  remain absent by design: those are project-specific addresses, while this is a
+  yes/no about a broker-side convention. A base field rather than a subclass's
+  because it has no natural siblings — a second convention would make it an enum
+  rather than add a second boolean — and because a derived field is invisible to
+  `MqttConfigComponent`, which works through `MqttConfig`.
+
 ## [0.7.0] - 2026-08-26
 
 ### Fixed

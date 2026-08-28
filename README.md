@@ -5,7 +5,8 @@ Thread-safe Arduino library for network interface configuration management.
 ## Features
 
 - **WiFiProfile** and **EthProfile** classes for WiFi and Ethernet interfaces
-- **MqttProfile** for the broker settings a device needs to reach an MQTT server
+- **MqttProfile** for the broker settings a device needs to reach an MQTT server,
+  including an optional Home Assistant discovery flag
   (address, port, TLS, credentials) — storage and validation only, with no MQTT
   client of its own
 - DHCP or static IP configuration (IP, subnet mask, gateway, DNS)
@@ -317,6 +318,15 @@ validates, and contains no MQTT client, no topics and no connection logic. The
 same profile therefore serves an ESP32 task, an ESP8266 loop and an AVR with no
 portal at all — the application owns the client, this owns what survives a
 reboot.
+
+`haDiscovery` sits on the storing side of that line: a flag saying whether the
+application should publish Home Assistant discovery messages. The profile
+publishes nothing and knows nothing about Home Assistant beyond the name. It is a
+base field rather than something for a subclass because it has no natural
+siblings — a second discovery convention would turn it into an enum rather than
+add a second boolean — and because a derived field would be invisible to
+`MqttConfigComponent`, which works through the base config type. See
+[API.md](API.md#why-hadiscovery-is-a-base-field).
 
 ## License
 
