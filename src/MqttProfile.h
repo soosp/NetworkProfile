@@ -33,6 +33,7 @@
 #  include <chrono>
 #endif
 
+#include "NetworkProfileVersion.h"
 #include "Host.h"
 #include "detail/json_tools.h"
 #include "detail/prefs_tools.h"

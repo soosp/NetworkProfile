@@ -732,6 +732,29 @@ Save to the new namespace afterwards. **Scheduled for removal in 1.0.0.**
 
 ---
 
+## Library version
+
+```cpp
+#include <NetworkProfileVersion.h>   // pulled in by every profile header
+NETWORK_PROFILE_VERSION              // major * 10000 + minor * 100 + patch
+```
+
+0.8.0 is `800`. It lets a consumer require a minimum version at compile time,
+which matters because the libraries built on this one deliberately do not
+declare it as a dependency: `AsyncConfigPortal`'s network and MQTT modules are
+opt-in, and a manifest entry would force the profile family on every project
+that only wants the portal. With `library.json` unable to express the
+constraint, the check has to live in the source:
+
+```cpp
+#if !defined(NETWORK_PROFILE_VERSION) || NETWORK_PROFILE_VERSION < 800
+#  error "This module needs NetworkProfile 0.8.0 or newer"
+#endif
+```
+
+An undefined macro evaluates to 0 in `#if`, so the same test also catches the
+releases from before the header existed.
+
 ## MqttProfile class
 
 Stores the settings a device needs in order to reach an MQTT broker. It holds no

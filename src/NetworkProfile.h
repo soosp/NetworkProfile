@@ -11,6 +11,7 @@
 #include <Arduino.h>
 #include <IPAddress.h>
 #include <type_traits>
+#include "NetworkProfileVersion.h"
 #include "Host.h"
 
 // The NTP servers moved to NtpProfile, but the macro that says whether NTP

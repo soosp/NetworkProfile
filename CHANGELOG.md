@@ -18,6 +18,16 @@ and this project adheres to
   because it has no natural siblings — a second convention would make it an enum
   rather than add a second boolean — and because a derived field is invisible to
   `MqttConfigComponent`, which works through `MqttConfig`.
+- `NetworkProfileVersion.h` defines `NETWORK_PROFILE_VERSION` as
+  `major * 10000 + minor * 100 + patch`, so a consumer can require a minimum
+  version at compile time. Libraries built on this one deliberately do not
+  declare it as a dependency — AsyncConfigPortal's network and MQTT modules are
+  opt-in — so a manifest entry cannot express the constraint and the check has
+  to live in the source. An undefined macro is 0 in `#if`, so the same test also
+  catches the releases from before this header existed.
+  Carried by `_doSave()`, `_doLoad()` and `toJson()`; defaults to false, so
+  records written before the field existed load as "off", which is what those
+  devices were doing.
 
 ## [0.7.0] - 2026-08-26
 
