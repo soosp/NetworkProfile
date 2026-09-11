@@ -23,4 +23,4 @@
  * An undefined macro evaluates to 0 in #if, so the same test also catches the
  * versions released before this header existed.
  */
-#define NETWORK_PROFILE_VERSION 800
+#define NETWORK_PROFILE_VERSION 900

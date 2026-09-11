@@ -9,6 +9,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-12
+
 ### Added
 
 - `SyslogProfile`: the settings a device stores to send its log to a syslog
@@ -16,6 +18,7 @@ and this project adheres to
   and a facility — with the same `getConfig`/`setConfig`/`checkConfig`,
   `saveCfg`/`loadCfg`/`clearCfg` and `toJson` surface as `MqttProfile`. It
   holds no socket and frames nothing; a sender reads it.
+- `NETWORK_PROFILE_VERSION` is now `900`.
 
 ## [0.8.0] - 2026-08-28
 
@@ -510,7 +513,8 @@ First public release.
   concurrent reader never sees a half-updated configuration.
 - API reference (`API.md`).
 
-[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.8.0...HEAD
+[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.9.0...HEAD
+[0.9.0]: https://github.com/soosp/NetworkProfile/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/soosp/NetworkProfile/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/soosp/NetworkProfile/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/soosp/NetworkProfile/compare/0.5.3...0.6.0
