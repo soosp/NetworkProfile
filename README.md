@@ -324,8 +324,8 @@ reboot.
 
 `haDiscovery` sits on the storing side of that line: a flag saying whether the
 application should publish Home Assistant discovery messages. The profile
-publishes nothing and knows nothing about Home Assistant beyond the name. It is a
-base field rather than something for a subclass because it has no natural
+publishes nothing and knows nothing about Home Assistant beyond the name. It is
+a base field rather than something for a subclass because it has no natural
 siblings — a second discovery convention would turn it into an enum rather than
 add a second boolean — and because a derived field would be invisible to
 `MqttConfigComponent`, which works through the base config type. See
