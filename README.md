@@ -10,6 +10,9 @@ Thread-safe Arduino library for network interface configuration management.
   (address, port, TLS, credentials) — storage and validation only, with no MQTT
   client of its own
 - DHCP or static IP configuration (IP, subnet mask, gateway, DNS)
+- **SyslogProfile** for the syslog server a device sends its log to (address,
+  port, severity floor, facility) — storage and validation only, with no
+  sender of its own
 - **NtpProfile** for the NTP servers a device synchronises from — one set for the
   device rather than a copy in every interface, and more than one instance where
   interfaces really do reach different servers (IP or FQDN, validated via the

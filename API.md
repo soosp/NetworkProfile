@@ -951,6 +951,64 @@ See `examples/MqttConfig`.
 
 ---
 
+## SyslogProfile class
+
+Stores the settings a device needs in order to send its log to a syslog
+server: address, port, severity floor, facility. It holds no socket and frames
+no message — a sender such as `SyslogSender` reads this; this only survives
+the reboot. Like `MqttProfile`, it is a standalone class in the same library.
+
+```cpp
+#include <SyslogProfile.h>
+SyslogProfile syslogProfile;
+```
+
+### SyslogProfile constants
+
+|Constant|Default|Meaning|
+|---|---|---|
+|`DEFAULT_PORT`|514|syslog over UDP|
+|`SEV_EMERGENCY` … `SEV_DEBUG`|0 … 7|RFC 5424 severity codes|
+|`FAC_USER`, `FAC_LOCAL0`, `FAC_LOCAL7`, `FAC_MAX`|1, 16, 23, 23|RFC 5424 facility codes|
+|`MUTEX_TIMEOUT`|1000|ms a bulk operation waits for the lock (ESP32)|
+
+Override `SYSLOG_PROFILE_MUTEX_TIMEOUT` through build flags.
+
+### SyslogConfig struct
+
+```cpp
+struct SyslogConfig {
+    bool     enabled     = false;
+    char     host[Host::MAX_FQDN_SIZE] = {};   // server: FQDN or IP literal
+    uint16_t port        = DEFAULT_PORT;
+    uint8_t  minSeverity = SEV_INFO;           // send this and more severe
+    uint8_t  facility    = FAC_LOCAL0;
+};
+```
+
+`enabled` is separate from an empty host on purpose: "switched off" and "not
+configured yet" are two different facts. `minSeverity` is an RFC 5424 code, so
+a *smaller* number means *more* severe; the default forwards errors, warnings
+and milestones and keeps debug output on the console.
+
+### SyslogProfile ConfigCheck enum
+
+`Ok`, `NoHost`, `BadHost`, `BadPort`, `BadSeverity` (not 0..7),
+`BadFacility` (not 0..23). `configCheckName()` names a value; `severityName()`
+names a severity code, for UIs.
+
+### SyslogProfile methods
+
+|Method|Meaning|
+|---|---|
+|`bool getConfig(SyslogConfig&) const`|copies the settings out, locked|
+|`bool setConfig(const SyslogConfig&)`|replaces them; refused unless `checkConfig()` passes|
+|`ConfigCheck checkConfig(const SyslogConfig&) const`|virtual; a disabled profile always passes|
+|`bool saveCfg(const char* ns)` / `loadCfg(ns)` / `clearCfg(ns)`|Preferences persistence, as the other profiles|
+|`bool toJson(char*, size_t) const`|every field, for backup — nothing here is a secret|
+
+---
+
 ## Passing a subclass config to a base function
 
 `checkConfig()`, `isValidConfig()` and `setConfig()` refuse a subclass's config

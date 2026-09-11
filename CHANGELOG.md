@@ -9,6 +9,14 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `SyslogProfile`: the settings a device stores to send its log to a syslog
+  server — address (validated through Host), port, an RFC 5424 severity floor
+  and a facility — with the same `getConfig`/`setConfig`/`checkConfig`,
+  `saveCfg`/`loadCfg`/`clearCfg` and `toJson` surface as `MqttProfile`. It
+  holds no socket and frames nothing; a sender reads it.
+
 ## [0.8.0] - 2026-08-28
 
 ### Added
