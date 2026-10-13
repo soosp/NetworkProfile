@@ -757,10 +757,13 @@ releases from before the header existed.
 
 ## MqttProfile class
 
-Stores the settings a device needs in order to reach an MQTT broker. It holds no
-client, no topics and no connection logic: the application connects, this only
-survives the reboot. Topics are deliberately absent — a project derives them from
-its own naming, and a profile that guessed at a layout would be wrong for most.
+Stores the settings a device needs in order to reach an MQTT broker, and its
+base topic. It holds no client and no connection logic: the application
+connects, this only survives the reboot. The base topic is the device's own
+namespace, under which the suite's convention puts `state`, `config`, `status`
+and `set/+`, and from which the discovery messages take their addresses; it may
+be left empty for the application's default. Everything below it is the
+project's own naming.
 
 Unlike the interface profiles, `MqttProfile` does not extend `NetworkProfile`;
 it is a standalone class in the same library.
@@ -776,12 +779,14 @@ MqttProfile mqtt;
 |---|---|---|
 |`MAX_USER_LEN` / `MAX_USER_SIZE`|32 / 33|username, excluding / including the terminator|
 |`MAX_PASSWORD_LEN` / `MAX_PASSWORD_SIZE`|64 / 65|password, likewise|
+|`MAX_TOPIC_LEN` / `MAX_TOPIC_SIZE`|64 / 65|base topic, likewise|
 |`DEFAULT_PORT`|1883|plain MQTT|
 |`DEFAULT_TLS_PORT`|8883|MQTT over TLS|
 |`MUTEX_TIMEOUT`|1000|ms a bulk operation waits for the lock (ESP32)|
 
-Override `MQTT_PROFILE_MAX_USER_LEN`, `MQTT_PROFILE_MAX_PASSWORD_LEN` and
-`MQTT_PROFILE_MUTEX_TIMEOUT` through build flags.
+Override `MQTT_PROFILE_MAX_USER_LEN`, `MQTT_PROFILE_MAX_PASSWORD_LEN`,
+`MQTT_PROFILE_MAX_TOPIC_LEN` and `MQTT_PROFILE_MUTEX_TIMEOUT` through build
+flags.
 
 ### MqttConfig struct
 
@@ -794,6 +799,7 @@ struct MqttConfig {
     char     user[MAX_USER_SIZE]         = {}; // empty: anonymous
     char     password[MAX_PASSWORD_SIZE] = {};
     bool     haDiscovery = false;              // publish HA discovery messages
+    char     baseTopic[MAX_TOPIC_SIZE]   = {}; // empty: the application's default
 };
 ```
 
@@ -803,6 +809,39 @@ taken off the broker for a while should not have to forget its address to do it.
 
 Changing `tls` does not change `port`. The two well-known ports are offered as
 constants, but guessing would overwrite a deliberate choice.
+
+#### The base topic
+
+`baseTopic` is the device's namespace: `sensors/cellar`. Empty means the
+application's default, which it derives from its own naming at start-up —
+typically `sensors/<hostname>`, so that a device follows its hostname until
+someone writes a topic in; a topic written in stays whatever the hostname does.
+`effectiveBaseTopic(cfg, def)` returns the one in effect.
+
+```cpp
+static bool        isValidBaseTopic(const char* topic);
+static const char* effectiveBaseTopic(const MqttConfig& cfg, const char* def);
+```
+
+`isValidBaseTopic()` accepts an empty topic or segments of printable
+characters joined by single `/`: no `+` or `#` (a wildcard in a publish topic is
+not an error the broker reports, the device just looks silent), no leading,
+trailing or doubled `/`, no control characters, at most `MAX_TOPIC_LEN` bytes.
+`checkConfig()` applies it (`BadTopic`).
+
+The topic the device last announced on is kept beside the settings, as device
+state rather than a setting — not in `MqttConfig`, not in the backup:
+
+```cpp
+bool getLastBaseTopic(char* out, size_t size) const;
+bool setLastBaseTopic(const char* topic);        // stored by saveCfg()
+```
+
+Retained messages outlive the device that sent them: a base topic that changed
+(written in, or the hostname behind the default renamed) leaves the old one
+holding a state document and the discovery entries for ever. At start-up the
+application compares the last topic with the one in effect, clears the old one
+if they differ, then notes the new one.
 
 #### Why `haDiscovery` is a base field
 
@@ -854,6 +893,7 @@ It defaults to `false`, and records written before the field existed load as
 |`BadHost`|not a valid FQDN or IP literal|
 |`BadPort`|port is zero|
 |`PasswordWithoutUser`|a password with no username to go with it|
+|`BadTopic`|the base topic fails `isValidBaseTopic()`|
 
 ### MqttProfile configuration
 
@@ -914,7 +954,8 @@ loading into an object that still has the old one.
 virtual bool toJson(char* json, size_t len) const;
 ```
 
-For backup. Carries `enabled`, `host`, `port`, `tls`, `user` and `haDiscovery`.
+For backup. Carries `enabled`, `host`, `port`, `tls`, `user`, `haDiscovery` and
+`baseTopic`; not the last-announced topic, which is device state.
 
 **The password is not included** — a backup file travels through mail and cloud
 storage, and a broker credential in it is a credential leaked. The Wi-Fi profile
@@ -929,20 +970,21 @@ A project that stores one more setting subclasses rather than patching the
 library:
 
 ```cpp
-class TopicMqttProfile : public MqttProfile {
+class AlarmMqttProfile : public MqttProfile {
 public:
-    struct TopicConfig : public MqttConfig { char baseTopic[64] = {}; };
+    struct AlarmConfig : public MqttConfig { char alarmTopic[64] = {}; };
     using MqttProfile::checkConfig;                     // keep the base overload visible
-    ConfigCheck checkConfig(const TopicConfig& cfg) const {
-        if (cfg.enabled && !cfg.baseTopic[0]) return ConfigCheck::NoHost;
+    ConfigCheck checkConfig(const AlarmConfig& cfg) const {
+        if (cfg.enabled && !isValidBaseTopic(cfg.alarmTopic)) return ConfigCheck::BadTopic;
         return MqttProfile::checkConfig(static_cast<const MqttConfig&>(cfg));
     }
 };
 ```
 
-A base topic is the right kind of thing to add this way: only the project knows
-its naming scheme. `haDiscovery` was once an example here and is now a base
-field — see [Why `haDiscovery` is a base field](#why-hadiscovery-is-a-base-field).
+A second, independent topic root (one shared with other devices, say) is the
+kind of thing to add this way: only the project knows it. The base topic and
+`haDiscovery` were once examples here and are now base fields — see
+[Why `haDiscovery` is a base field](#why-hadiscovery-is-a-base-field).
 
 Override `_doSave()` / `_doLoad()` (calling the base first) to persist the extra
 field, and `toJson()` to include it.

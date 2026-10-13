@@ -2,18 +2,22 @@
 
 /**
  * @file MqttProfile.h
- * @brief Stored MQTT broker settings: address, port, TLS, credentials.
+ * @brief Stored MQTT broker settings: address, port, TLS, credentials, the
+ *        device's base topic and the discovery switch.
  *
  * Sits in this library for the same reason the NTP servers do: it is something a
  * networked device stores in order to reach a service, and splitting it into its
  * own library would separate things that are always deployed together. It knows
- * nothing about MQTT itself — no client, no topics, no connection. The
- * application owns those; this owns what survives a reboot.
+ * nothing about MQTT itself — no client, no connection. The application owns
+ * those; this owns what survives a reboot.
  *
- * Topics are deliberately absent. A project derives them from its own naming
- * (project name, hostname, sensor index), and a profile that guessed at a topic
- * layout would be wrong for every second project. Add them in a subclass where
- * they are project-specific enough to configure.
+ * The one topic here is the base topic: the device's own namespace, under
+ * which the suite's convention puts `state`, `config`, `status` and `set/+`,
+ * and from which the discovery messages take their addresses. Empty means the
+ * application's default (its own naming, such as "sensors/<hostname>"), so a
+ * device follows its hostname until someone writes a topic in. Everything
+ * below the base is still the project's: a richer layout derives from it, or
+ * adds its own settings in a subclass.
  *
  * Extending it follows the WiFiProfile pattern — override the virtual hooks:
  * @code
@@ -53,6 +57,11 @@
 #  define MQTT_PROFILE_MAX_PASSWORD_LEN 64
 #endif
 
+/** @brief Maximum length of the base topic, excluding the terminator. */
+#ifndef MQTT_PROFILE_MAX_TOPIC_LEN
+#  define MQTT_PROFILE_MAX_TOPIC_LEN 64
+#endif
+
 class MqttProfile {
 public:
     static constexpr uint32_t MUTEX_TIMEOUT   = MQTT_PROFILE_MUTEX_TIMEOUT;
@@ -61,6 +70,8 @@ public:
     static constexpr size_t MAX_USER_SIZE     = MAX_USER_LEN + 1;
     static constexpr size_t MAX_PASSWORD_LEN  = MQTT_PROFILE_MAX_PASSWORD_LEN;
     static constexpr size_t MAX_PASSWORD_SIZE = MAX_PASSWORD_LEN + 1;
+    static constexpr size_t MAX_TOPIC_LEN     = MQTT_PROFILE_MAX_TOPIC_LEN;
+    static constexpr size_t MAX_TOPIC_SIZE    = MAX_TOPIC_LEN + 1;
 
     static constexpr uint16_t DEFAULT_PORT     = 1883;   ///< plain MQTT
     static constexpr uint16_t DEFAULT_TLS_PORT = 8883;   ///< MQTT over TLS
@@ -101,6 +112,18 @@ public:
          * never been told to publish it should not.
          */
         bool     haDiscovery = false;
+
+        /**
+         * The device's base topic: "sensors/cellar". Empty means the
+         * application's default, which it derives from its own naming
+         * (typically the hostname) at start-up: effectiveBaseTopic(). Stored
+         * empty, a device keeps following its hostname; a topic written in
+         * stays whatever the hostname does.
+         *
+         * Checked by isValidBaseTopic(): no wildcard, no leading, trailing or
+         * doubled "/", no control characters, at most MAX_TOPIC_LEN bytes.
+         */
+        char     baseTopic[MAX_TOPIC_SIZE] = {};
     };
 
     /** @brief Result of checkConfig(). */
@@ -109,7 +132,8 @@ public:
         NoHost,             ///< Enabled but no broker address.
         BadHost,            ///< Not a valid FQDN or IP literal.
         BadPort,            ///< Port is zero.
-        PasswordWithoutUser ///< A password with no username to go with it.
+        PasswordWithoutUser,///< A password with no username to go with it.
+        BadTopic            ///< The base topic fails isValidBaseTopic().
     };
 
     /**
@@ -129,6 +153,7 @@ public:
             case ConfigCheck::BadHost:             return F("invalid broker address");
             case ConfigCheck::BadPort:             return F("invalid port");
             case ConfigCheck::PasswordWithoutUser: return F("password without username");
+            case ConfigCheck::BadTopic:            return F("invalid base topic");
         }
         return F("unknown");
     }
@@ -227,7 +252,79 @@ public:
         if (cfg.port == 0) return ConfigCheck::BadPort;
         if (cfg.password[0] != '\0' && cfg.user[0] == '\0')
             return ConfigCheck::PasswordWithoutUser;
+        if (!isValidBaseTopic(cfg.baseTopic)) return ConfigCheck::BadTopic;
         return ConfigCheck::Ok;
+    }
+
+    /**
+     * @brief Whether @p topic can be a base topic: empty (the default), or
+     *        segments of printable characters joined by single "/": no
+     *        wildcard (a "+" or "#" in a publish topic is not an error the
+     *        broker reports, the device just looks silent), no leading,
+     *        trailing or doubled "/", no control characters, at most
+     *        MAX_TOPIC_LEN bytes.
+     */
+    static bool isValidBaseTopic(const char* topic) {
+        if (!topic) return false;
+        if (topic[0] == '\0') return true;
+        size_t n = 0;
+        char prev = '/';
+        for (const char* p = topic; *p; p++, n++) {
+            const unsigned char c = (unsigned char)*p;
+            if (c == '#' || c == '+' || c < 0x20 || c == 0x7F) return false;
+            if (c == '/' && prev == '/') return false;        // leading or doubled
+            prev = (char)c;
+        }
+        return n <= MAX_TOPIC_LEN && prev != '/';             // not trailing
+    }
+
+    /**
+     * @brief The base topic in effect: the stored one, or @p def while that is
+     *        empty.
+     * @param def The application's default, such as "sensors/<hostname>".
+     * @return @p cfg.baseTopic or @p def.
+     */
+    static const char* effectiveBaseTopic(const MqttConfig& cfg, const char* def) {
+        return cfg.baseTopic[0] ? cfg.baseTopic : def;
+    }
+
+    /**
+     * @brief The base topic the device last announced on, as the application
+     *        noted it with setLastBaseTopic(); empty if never.
+     *
+     * Retained messages outlive the device that sent them: a base topic that
+     * changed (written in, or the hostname behind the default renamed) leaves
+     * the old one holding a state document and the discovery entries for
+     * ever. At start-up the application compares this with the base in
+     * effect, clears the old one if they differ, then notes the new one. It
+     * is device state, not a setting: not in the backup, and not in
+     * MqttConfig.
+     *
+     * @param out  Filled on success (MAX_TOPIC_SIZE bytes).
+     * @param size Size of @p out.
+     * @return false if the lock could not be obtained; @p out is untouched.
+     */
+    bool getLastBaseTopic(char* out, size_t size) const {
+        if (!out || size == 0) return false;
+        if (!_lock()) return false;
+        strncpy(out, _last, size - 1);
+        out[size - 1] = '\0';
+        _unlock();
+        return true;
+    }
+
+    /**
+     * @brief Notes the base topic the device announces on; saveCfg() stores it
+     *        with the settings.
+     * @return false if the lock could not be obtained or @p topic is too long.
+     */
+    bool setLastBaseTopic(const char* topic) {
+        if (!topic || strlen(topic) > MAX_TOPIC_LEN) return false;
+        if (!_lock()) return false;
+        strncpy(_last, topic, MAX_TOPIC_LEN);
+        _last[MAX_TOPIC_LEN] = '\0';
+        _unlock();
+        return true;
     }
 
     /**
@@ -333,7 +430,9 @@ public:
 
         ok = ok && json_cat_P(json, PSTR(",\"haDiscovery\":"), len);
         ok = ok && json_cat_P(json, _cfg.haDiscovery ? PSTR("true") : PSTR("false"), len);
-
+        ok = ok && json_cat_P(json, PSTR(",\"baseTopic\":\""), len);
+        ok = ok && json_cat_esc(json, _cfg.baseTopic, len);
+        ok = ok && json_cat_P(json, PSTR("\""), len);
         ok = ok && json_cat_P(json, PSTR("}"), len);
 
         _unlock();
@@ -344,6 +443,7 @@ public:
 
 protected:
     MqttConfig _cfg;
+    char       _last[MAX_TOPIC_SIZE] = {};   ///< getLastBaseTopic()
 
     // Lock: a real timed mutex exists only where there is preemptive
     // concurrency (ESP32, and the host-test build). AVR is single-threaded and
@@ -373,6 +473,8 @@ protected:
         ok = ok && prefs_putStr(p, "user", _cfg.user);
         ok = ok && prefs_putStr(p, "pass", _cfg.password);
         ok = ok && p.putBool("hadisc", _cfg.haDiscovery);
+        ok = ok && prefs_putStr(p, "topic", _cfg.baseTopic);
+        ok = ok && prefs_putStr(p, "last", _last);
         return ok;
     }
 
@@ -400,6 +502,11 @@ protected:
         // Absent in records written before this field existed; the default is
         // off, which is what such a device was doing.
         _cfg.haDiscovery = p.getBool("hadisc", def.haDiscovery);
+        // Absent in older records: empty, the application's default
+        _cfg.baseTopic[0] = '\0';
+        p.getString("topic", _cfg.baseTopic, sizeof(_cfg.baseTopic));
+        _last[0] = '\0';
+        p.getString("last", _last, sizeof(_last));
         return true;
     }
 };

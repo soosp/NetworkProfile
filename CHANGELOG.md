@@ -9,6 +9,22 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `MqttProfile`: the device's base topic, `MqttConfig::baseTopic` — the
+  namespace under which the suite's convention puts `state`, `config`,
+  `status` and `set/+`, and from which the discovery messages take their
+  addresses. Empty means the application's default (`effectiveBaseTopic()`),
+  so a device follows its hostname until a topic is written in. Checked by
+  `isValidBaseTopic()` (`ConfigCheck::BadTopic`): no wildcard, no leading,
+  trailing or doubled `/`, no control characters, at most `MAX_TOPIC_LEN`
+  (`MQTT_PROFILE_MAX_TOPIC_LEN`, 64). In the backup as `baseTopic`
+- `MqttProfile::getLastBaseTopic()` / `setLastBaseTopic()`: the topic the
+  device last announced on, stored beside the settings as device state, so
+  that an application can clear the retained messages on the old one after
+  the base changed. Not in `MqttConfig` and not in the backup
+- Records written before these fields load with an empty base topic
+
 ## [0.9.0] - 2026-09-12
 
 ### Added

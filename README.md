@@ -5,10 +5,10 @@ Thread-safe Arduino library for network interface configuration management.
 ## Features
 
 - **WiFiProfile** and **EthProfile** classes for WiFi and Ethernet interfaces
-- **MqttProfile** for the broker settings a device needs to reach an MQTT server,
-  including an optional Home Assistant discovery flag
-  (address, port, TLS, credentials) — storage and validation only, with no MQTT
-  client of its own
+- **MqttProfile** for the broker settings a device needs to reach an MQTT server
+  (address, port, TLS, credentials), its base topic and an optional Home
+  Assistant discovery flag — storage and validation only, with no MQTT client
+  of its own
 - DHCP or static IP configuration (IP, subnet mask, gateway, DNS)
 - **SyslogProfile** for the syslog server a device sends its log to (address,
   port, severity floor, facility) — storage and validation only, with no
@@ -317,7 +317,7 @@ other. Splitting them into separate libraries would mean three dependencies and
 three release cycles for things that are always deployed together.
 
 The boundary that does hold is a different one: `MqttProfile` stores and
-validates, and contains no MQTT client, no topics and no connection logic. The
+validates, and contains no MQTT client and no connection logic. The
 same profile therefore serves an ESP32 task, an ESP8266 loop and an AVR with no
 portal at all — the application owns the client, this owns what survives a
 reboot.
