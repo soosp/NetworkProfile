@@ -779,7 +779,7 @@ MqttProfile mqtt;
 |---|---|---|
 |`MAX_USER_LEN` / `MAX_USER_SIZE`|32 / 33|username, excluding / including the terminator|
 |`MAX_PASSWORD_LEN` / `MAX_PASSWORD_SIZE`|64 / 65|password, likewise|
-|`MAX_TOPIC_LEN` / `MAX_TOPIC_SIZE`|64 / 65|base topic, likewise|
+|`MAX_TOPIC_LEN` / `MAX_TOPIC_SIZE`|hostname length + 16 (79 / 80)|base topic, likewise: the default `"<prefix>/<hostname>"` has to fit whole|
 |`DEFAULT_PORT`|1883|plain MQTT|
 |`DEFAULT_TLS_PORT`|8883|MQTT over TLS|
 |`MUTEX_TIMEOUT`|1000|ms a bulk operation waits for the lock (ESP32)|

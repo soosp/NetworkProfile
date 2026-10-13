@@ -9,6 +9,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- `MqttProfile::MAX_TOPIC_LEN` defaulted to 64, less than the application's
+  typical default base topic `sensors/<hostname>` with a hostname at its
+  longest (71), so that default could neither be typed in nor noted as the
+  last-announced topic. It is now `NETWORK_PROFILE_HOSTNAME_LEN + 16` (79)
+
 ## [0.10.0] - 2026-10-13
 
 ### Added

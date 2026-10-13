@@ -39,6 +39,12 @@
 
 #include "NetworkProfileVersion.h"
 #include "Host.h"
+
+// The hostname length, as NetworkProfile.h sets it; repeated here so that the
+// base topic's bound follows it without this header depending on that one.
+#ifndef NETWORK_PROFILE_HOSTNAME_LEN
+#  define NETWORK_PROFILE_HOSTNAME_LEN 63 // RFC 1123
+#endif
 #include "detail/json_tools.h"
 #include "detail/prefs_tools.h"
 
@@ -57,9 +63,16 @@
 #  define MQTT_PROFILE_MAX_PASSWORD_LEN 64
 #endif
 
-/** @brief Maximum length of the base topic, excluding the terminator. */
+/**
+ * @brief Maximum length of the base topic, excluding the terminator.
+ *
+ * From the hostname's length, not a round number: the application's default
+ * is typically "<prefix>/<hostname>", and both the typed-in topic and the
+ * last-announced one (setLastBaseTopic()) have to hold it whole — a hostname
+ * at its longest included. 16 leaves a prefix of up to 15 characters.
+ */
 #ifndef MQTT_PROFILE_MAX_TOPIC_LEN
-#  define MQTT_PROFILE_MAX_TOPIC_LEN 64
+#  define MQTT_PROFILE_MAX_TOPIC_LEN (NETWORK_PROFILE_HOSTNAME_LEN + 16)
 #endif
 
 class MqttProfile {
