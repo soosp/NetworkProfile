@@ -15,12 +15,12 @@
  * library.json, the check has to live in the source:
  *
  * @code
- * #if !defined(NETWORK_PROFILE_VERSION) || NETWORK_PROFILE_VERSION < 800
- * #  error "This module needs NetworkProfile 0.8.0 or newer"
+ * #if !defined(NETWORK_PROFILE_VERSION) || NETWORK_PROFILE_VERSION < 1000
+ * #  error "This module needs NetworkProfile 0.10.0 or newer"
  * #endif
  * @endcode
  *
  * An undefined macro evaluates to 0 in #if, so the same test also catches the
  * versions released before this header existed.
  */
-#define NETWORK_PROFILE_VERSION 900
+#define NETWORK_PROFILE_VERSION 1000

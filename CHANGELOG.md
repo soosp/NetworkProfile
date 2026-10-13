@@ -9,6 +9,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-13
+
 ### Added
 
 - `MqttProfile`: the device's base topic, `MqttConfig::baseTopic` — the
@@ -529,7 +531,8 @@ First public release.
   concurrent reader never sees a half-updated configuration.
 - API reference (`API.md`).
 
-[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.9.0...HEAD
+[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.10.0...HEAD
+[0.10.0]: https://github.com/soosp/NetworkProfile/compare/0.9.0...0.10.0
 [0.9.0]: https://github.com/soosp/NetworkProfile/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/soosp/NetworkProfile/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/soosp/NetworkProfile/compare/0.6.0...0.7.0

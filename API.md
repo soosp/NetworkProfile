@@ -739,7 +739,7 @@ Save to the new namespace afterwards. **Scheduled for removal in 1.0.0.**
 NETWORK_PROFILE_VERSION              // major * 10000 + minor * 100 + patch
 ```
 
-0.9.0 is `900`. It lets a consumer require a minimum version at compile time,
+0.10.0 is `1000`. It lets a consumer require a minimum version at compile time,
 which matters because the libraries built on this one deliberately do not
 declare it as a dependency: `AsyncConfigPortal`'s network and MQTT modules are
 opt-in, and a manifest entry would force the profile family on every project
