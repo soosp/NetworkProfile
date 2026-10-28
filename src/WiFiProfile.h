@@ -13,6 +13,7 @@
 
 #if defined(ARDUINO_ARCH_ESP32)
 #  include <esp_mac.h>
+#  include <soc/soc_caps.h>   // SOC_WIFI_SUPPORTED
 #  include <WiFi.h>
 #elif defined(ARDUINO_ARCH_ESP8266)
 #  include <ESP8266WiFi.h>
@@ -624,9 +625,17 @@ protected:
      */
     void _initMacDefault() override {
 #if defined(ARDUINO_ARCH_ESP32)
+#  if SOC_WIFI_SUPPORTED
         _macDefaultKnown = (esp_read_mac(_macDefault, ESP_MAC_WIFI_STA) == ESP_OK)
                         && isValidMac(_macDefault);
         if (!_macDefaultKnown) memset(_macDefault, 0, MAC_LEN);
+#  else
+        // No radio on this chip, so no station address in its MAC table:
+        // asking would only fail, and log "mac type is incorrect" on the way.
+        // Known once the adapter has read it from the co-processor.
+        memset(_macDefault, 0, MAC_LEN);
+        _macDefaultKnown = false;
+#  endif
         _generateHostnameDefault("ESP");
 #elif defined(ARDUINO_ARCH_ESP8266)
         uint8_t mac[MAC_LEN];

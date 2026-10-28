@@ -9,6 +9,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- ESP32-P4 (and any chip without a radio): the WiFi profile's constructor no
+  longer asks the MAC table for a station address the chip does not have, so
+  the boot log loses `E system_api: 0 mac type is incorrect`. Nothing else
+  changes: the factory MAC was already unknown there until the adapter reports it
+
 ## [0.11.0] - 2026-10-28
 
 ### Added
