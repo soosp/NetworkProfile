@@ -9,6 +9,12 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-10-28
+
+### Fixed
+
+- Sync version across all occurrences (`CHANGELOG.md`, `library.json`, `library.properties`)
+
 ## [0.11.1] - 2026-10-28
 
 ### Fixed
@@ -583,7 +589,8 @@ First public release.
   concurrent reader never sees a half-updated configuration.
 - API reference (`API.md`).
 
-[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.11.1...HEAD
+[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.11.2...HEAD
+[0.11.2]: https://github.com/soosp/NetworkProfile/compare/0.11.1...0.11.2
 [0.11.1]: https://github.com/soosp/NetworkProfile/compare/0.11.0...0.11.1
 [0.11.0]: https://github.com/soosp/NetworkProfile/compare/0.10.1...0.11.0
 [0.10.1]: https://github.com/soosp/NetworkProfile/compare/0.10.0...0.10.1
