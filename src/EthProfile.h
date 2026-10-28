@@ -83,13 +83,23 @@ protected:
      * - Other AVR: NETWORK_PROFILE_DEFAULT_ETH_MAC string via macFromStr()
      *
      * Generates _hostnameDefault with prefix "ESP" on both ESP platforms and
-     * "AVR" on AVR — the prefix names the controller, not the interface, so a
+     * "AVR" on AVR. The hostname names the device, not the interface, so a
      * device's WiFi and Ethernet profiles produce the same default hostname and
-     * whichever one serves identifies the same device.
+     * whichever one serves identifies the same device — on ESP32 because both
+     * build it from the chip's base MAC (_generateHostnameDefault()), on
+     * ESP8266 because the derived address shares the station address's last
+     * three bytes.
+     *
+     * ESP_MAC_ETH exists on every ESP32, with or without an EMAC: it is the
+     * address an SPI controller such as a W5500 is given, and the adapter
+     * writes it to the chip (ESP32EthAdapter), so this is what goes on the
+     * wire either way.
      */
     void _initMacDefault() override {
 #if defined(ARDUINO_ARCH_ESP32)
-        esp_read_mac(_macDefault, ESP_MAC_ETH);
+        _macDefaultKnown = (esp_read_mac(_macDefault, ESP_MAC_ETH) == ESP_OK)
+                        && isValidMac(_macDefault);
+        if (!_macDefaultKnown) memset(_macDefault, 0, MAC_LEN);
         _generateHostnameDefault("ESP");
 
 #elif defined(ARDUINO_ARCH_ESP8266)
@@ -105,10 +115,12 @@ protected:
         WiFi.macAddress(_macDefault);
         _macDefault[0] = (_macDefault[0] | 0x02) & 0xFE;  // bit1=1 (LAA), bit0=0 (unicast) — byte 0
 #endif
+        _macDefaultKnown = isValidMac(_macDefault);
         _generateHostnameDefault("ESP");
 
 #elif defined(ARDUINO_ARCH_AVR)
         avr_init_mac_default(_macDefault);
+        _macDefaultKnown = isValidMac(_macDefault);
         _generateHostnameDefault("AVR");
 
 #else

@@ -612,18 +612,27 @@ protected:
      *
      * Platform-specific implementation:
      * - ESP32:   esp_read_mac(_macDefault, ESP_MAC_WIFI_STA)
-     * - ESP8266: WiFi.macAddress() parsed via macFromStr()
+     * - ESP8266: WiFi.macAddress()
+     *
+     * On a chip with no radio of its own (ESP32-P4, WiFi over ESP-Hosted) the
+     * station address is not in the chip's MAC table and the read fails: the
+     * address belongs to the co-processor. _macDefaultKnown then stays false
+     * and the adapter reports the address once the link is up
+     * (setFactoryMac()).
      *
      * Generates _hostnameDefault with prefix "ESP".
      */
     void _initMacDefault() override {
 #if defined(ARDUINO_ARCH_ESP32)
-        esp_read_mac(_macDefault, ESP_MAC_WIFI_STA);
+        _macDefaultKnown = (esp_read_mac(_macDefault, ESP_MAC_WIFI_STA) == ESP_OK)
+                        && isValidMac(_macDefault);
+        if (!_macDefaultKnown) memset(_macDefault, 0, MAC_LEN);
         _generateHostnameDefault("ESP");
 #elif defined(ARDUINO_ARCH_ESP8266)
         uint8_t mac[MAC_LEN];
         WiFi.macAddress(mac);
         memcpy(_macDefault, mac, MAC_LEN);
+        _macDefaultKnown = isValidMac(_macDefault);
         _generateHostnameDefault("ESP");
 #else
         memset(_macDefault, 0, MAC_LEN);

@@ -29,6 +29,9 @@
 #  include <mutex>
 #  include <chrono>
 #endif
+#if defined(ARDUINO_ARCH_ESP32)
+#  include <esp_mac.h>   // esp_read_mac(ESP_MAC_BASE): the default hostname
+#endif
 
 #ifndef NETWORK_PROFILE_MUTEX_TIMEOUT
 #  define NETWORK_PROFILE_MUTEX_TIMEOUT 1000
@@ -228,6 +231,7 @@ public:
         , _priority(0)
         , _mac{}
         , _macDefault{}
+        , _macDefaultKnown(false)
         , _hostnameDefault{}
     {}
 
@@ -476,26 +480,92 @@ public:
      * @brief Copies the MAC address into the provided buffer.
      *
      * If @p source is ConfigSource::ACTIVE and an active MAC override is set
-     * (non-zero), it is returned. If the active MAC is all zeros, the
-     * generated default MAC is returned instead (ACTIVE with fallback).
-     * If @p source is ConfigSource::FACTORY, the generated MAC is always
-     * returned.
+     * (hasMacOverride()), it is returned. Otherwise the factory MAC is
+     * returned instead (ACTIVE with fallback). If @p source is
+     * ConfigSource::FACTORY, the factory MAC is always returned.
+     *
+     * The factory MAC can be unknown (hasFactoryMac()): on an interface whose
+     * address lives on a co-processor it is learnt only once the interface has
+     * started. Asked for it then, this fills @p mac with zeros and returns
+     * false rather than handing back an address nobody owns.
      *
      * @param mac    Destination buffer (MAC_LEN bytes).
      * @param source ConfigSource::ACTIVE (default) or ConfigSource::FACTORY.
-     * @return true on success, false on mutex timeout.
+     * @return true on success; false on mutex timeout (@p mac untouched) or
+     *         when the address asked for is the factory one and it is not yet
+     *         known (@p mac zeroed).
      */
     bool getMac(MACAddress mac, ConfigSource source = ConfigSource::ACTIVE) const {
         if (!_lock()) return false;
 
-        const uint8_t* src = _mac;
-        if (source == ConfigSource::FACTORY || !isValidMac(_mac)) {
-            src = _macDefault;
-        }
-
-        memcpy(mac, src, MAC_LEN);
+        const bool useOverride = (source == ConfigSource::ACTIVE) && isValidMac(_mac);
+        const bool known       = useOverride || _macDefaultKnown;
+        if (known) memcpy(mac, useOverride ? _mac : _macDefault, MAC_LEN);
+        else       memset(mac, 0, MAC_LEN);
         _unlock();
-        return true;
+        return known;
+    }
+
+    /**
+     * @brief Whether an active MAC override is set.
+     *
+     * An adapter does not need this to apply the address — it brings the
+     * hardware to getMac(ACTIVE) and writes only when the two differ — but it
+     * is what decides whether the override is stored at all (_doSave()).
+     *
+     * @return true if a valid override is set; false if not, or on mutex
+     *         timeout.
+     */
+    bool hasMacOverride() const {
+        if (!_lock()) return false;
+        const bool set = isValidMac(_mac);
+        _unlock();
+        return set;
+    }
+
+    /**
+     * @brief Whether the factory MAC is known.
+     *
+     * True from construction on every interface whose address the chip itself
+     * holds. False on one whose address lives on a co-processor — WiFi on an
+     * ESP32-P4, run by an ESP32-C6 over ESP-Hosted — until its adapter has
+     * started the interface, read the address and reported it with
+     * setFactoryMac().
+     *
+     * @return true if known; false if not, or on mutex timeout.
+     */
+    bool hasFactoryMac() const {
+        if (!_lock()) return false;
+        const bool known = _macDefaultKnown;
+        _unlock();
+        return known;
+    }
+
+    /**
+     * @brief Records the factory MAC as the hardware reports it.
+     *
+     * For adapters only, and only for an interface whose factory MAC could
+     * not be read when the profile was constructed (hasFactoryMac() false):
+     * the adapter reads it from the driver once the interface is up and hands
+     * it over here. Accepted once; a known factory MAC is not replaced.
+     *
+     * The default hostname does not change with it: on ESP32 that is built
+     * from the chip's base MAC, which is known from the start.
+     *
+     * @param mac The address the hardware reports (MAC_LEN bytes).
+     * @return true if recorded; false if @p mac is not valid, a factory MAC is
+     *         already known, or on mutex timeout.
+     */
+    bool setFactoryMac(const MACAddress mac) {
+        if (!isValidMac(mac)) return false;
+        if (!_lock()) return false;
+        const bool ok = !_macDefaultKnown;
+        if (ok) {
+            memcpy(_macDefault, mac, MAC_LEN);
+            _macDefaultKnown = true;
+        }
+        _unlock();
+        return ok;
     }
 
     /**
@@ -571,22 +641,26 @@ public:
     }
 
     /**
-     * @brief Checks whether a MAC address is valid (non-zero, non-broadcast).
+     * @brief Checks whether a MAC address can be an interface's own address.
      *
-     * Returns false if all bytes are 0x00 (unset) or all bytes are 0xFF
-     * (broadcast address).
+     * Returns false if all bytes are 0x00 (unset), or if the I/G bit — the
+     * lowest bit of byte 0 — is set: that marks a group (multicast) address,
+     * which covers the all-0xFF broadcast address too. No interface can send
+     * from one, and the drivers refuse it (esp_wifi_set_mac(),
+     * wifi_set_macaddr()), so an override that passed here would only fail
+     * later, at the adapter.
+     *
+     * Locally administered addresses (U/L bit set) are valid.
      *
      * @param mac MAC address to validate.
      * @return true if valid, false otherwise.
      */
     static bool isValidMac(const MACAddress mac) {
-        bool allZero = true;
-        bool allFF   = true;
+        if (mac[0] & 0x01) return false;        // group address, incl. broadcast
         for (uint8_t i = 0; i < MAC_LEN; i++) {
-            if (mac[i] != 0x00) allZero = false;
-            if (mac[i] != 0xFF) allFF   = false;
+            if (mac[i] != 0x00) return true;
         }
-        return !allZero && !allFF;
+        return false;                           // all zero: not set
     }
 
     /**
@@ -881,9 +955,15 @@ public:
         ok = ok && _fitted(snprintf_P(buf, BS, PSTR(",\"prio\":%u"), (unsigned)_priority), BS);
         ok = ok && _strncatJson(json, buf, len);
 
-        // Active MAC — override if valid, otherwise default
-        const uint8_t* macSrc = isValidMac(_mac) ? _mac : _macDefault;
-        ok = ok && macToStr(macBuf, sizeof(macBuf), macSrc);
+        // Active MAC — override if valid, otherwise default; empty while the
+        // factory MAC is not yet known, rather than an address nobody owns
+        const bool overridden = isValidMac(_mac);
+        const uint8_t* macSrc = overridden ? _mac : _macDefault;
+        if (overridden || _macDefaultKnown) {
+            ok = ok && macToStr(macBuf, sizeof(macBuf), macSrc);
+        } else {
+            macBuf[0] = '\0';
+        }
         ok = ok && _fitted(snprintf_P(buf, BS, PSTR(",\"mac\":\"%s\""), macBuf), BS);
         ok = ok && _strncatJson(json, buf, len);
 
@@ -1003,24 +1083,45 @@ protected:
      * Must be called explicitly at the end of each subclass constructor,
      * after the base constructor has completed.
      *
-     * Also generates _hostnameDefault from the last 3 bytes of _macDefault,
-     * e.g. "ESP-02D6FC" or "AVR-4E5230".
+     * Sets _macDefaultKnown to whether the read succeeded. Where the address
+     * cannot be read yet — WiFi on an ESP32-P4, which lives on an ESP-Hosted
+     * co-processor — it stays false, _macDefault stays zero, and the adapter
+     * supplies the address later through setFactoryMac().
+     *
+     * Also generates _hostnameDefault (see _generateHostnameDefault()), e.g.
+     * "ESP-02D6FC" or "AVR-4E5230".
      */
     virtual void _initMacDefault() = 0;
 
     /**
-     * @brief Generates _hostnameDefault from _macDefault.
+     * @brief Generates _hostnameDefault.
      *
      * Called by subclasses at the end of _initMacDefault(), after _macDefault
      * has been populated. Format: "<PREFIX>-XXYYZZ" where XX, YY, ZZ are the
-     * last three bytes of _macDefault in uppercase hex.
+     * last three bytes of the source MAC in uppercase hex.
+     *
+     * The source is the chip's base MAC on ESP32 (esp_read_mac(ESP_MAC_BASE)),
+     * and _macDefault elsewhere. The hostname names the device, not one of its
+     * interfaces, so every profile on it has to come out the same, and on
+     * ESP32 the interface addresses are not: Ethernet is base+3 with four
+     * universal addresses, or a local one derived from base+1. The base is
+     * also what the chip knows from boot on every ESP32 — including the P4,
+     * whose WiFi address is not readable until the co-processor is up. On
+     * ESP32 WiFi this changes nothing, since the station address is the base.
+     *
+     * Falls back to _macDefault if the base cannot be read; with that unknown
+     * as well, the hostname carries zeros until one is configured.
      *
      * @param prefix Platform prefix string (e.g. "ESP", "AVR").
      */
     void _generateHostnameDefault(const char* prefix) {
+        const uint8_t* src = _macDefault;
+#if defined(ARDUINO_ARCH_ESP32)
+        uint8_t base[MAC_LEN];
+        if (esp_read_mac(base, ESP_MAC_BASE) == ESP_OK) src = base;
+#endif
         snprintf(_hostnameDefault, MAX_HOSTNAME_SIZE, "%s-%02X%02X%02X",
-            prefix,
-            _macDefault[3], _macDefault[4], _macDefault[5]);
+            prefix, src[3], src[4], src[5]);
     }
 
     // ------------------------------------------------------------------------
@@ -1077,7 +1178,13 @@ protected:
         }
         ok = ok && (_putStr(p, "host", _hostname)         > 0);
         ok = ok && (p.putUChar( "prio", _priority)         > 0);
-        ok = ok && (p.putBytes( "mac",  _mac, MAC_LEN) == MAC_LEN);
+        // Only an override is stored. Without one the key is removed, so the
+        // record says "use the factory address" rather than holding a copy of
+        // zeros — the same convention as the static-address keys above.
+        if (isValidMac(_mac))
+            ok = ok && (p.putBytes( "mac",  _mac, MAC_LEN) == MAC_LEN);
+        else
+            p.remove("mac");
 
         return ok;
     }
@@ -1254,9 +1361,13 @@ protected:
     }
 
     // ------------------------------------------------------------------------
-    // MAC default storage — written by _initMacDefault(), read-only after that
+    // MAC default storage — written by _initMacDefault(), and once more by
+    // setFactoryMac() where that could not read it; read-only after that
     // ------------------------------------------------------------------------
     uint8_t _macDefault[MAC_LEN];
+    /// Whether _macDefault holds the interface's real factory address. Set by
+    /// _initMacDefault(), or later and once by setFactoryMac().
+    bool    _macDefaultKnown;
     char    _hostnameDefault[MAX_HOSTNAME_SIZE];
 
     // ------------------------------------------------------------------------

@@ -9,6 +9,38 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `hasMacOverride()`: whether an active MAC override is set
+- `hasFactoryMac()` / `setFactoryMac()`: the factory MAC can be unknown at
+  construction — WiFi on an ESP32-P4, whose station address belongs to the
+  ESP-Hosted co-processor. The adapter reports it once the interface is up;
+  accepted once, while it is unknown
+
+### Changed
+
+- `getMac()` returns `false`, with the buffer zero-filled, when the address
+  asked for is the factory one and it is not known; `toJson()` gives `"mac":""`
+  then. Before, an unknown address came back as `00:00:00:00:00:00` and `true`
+- `isValidMac()` refuses group (multicast) addresses: the I/G bit, bit 0 of
+  byte 0, set. This includes the broadcast address it already refused. The
+  drivers refuse such an address, so an override that passed would only fail at
+  the adapter
+- `saveCfg()` stores the `mac` key only when an override is set, and removes it
+  otherwise — the convention the static-address keys already follow
+- The generated default hostname is built from the chip's base MAC on ESP32
+  (`ESP_MAC_BASE`), not from the interface's address. Unchanged for WiFi, where
+  the station address is the base. **An Ethernet profile on ESP32 gets a new
+  default hostname** — its address is base+3, or a local one — which now matches
+  the WiFi profile's, as the documentation always said it did
+
+### Fixed
+
+- `WiFiProfile` and `EthProfile` on ESP32 ignored a failed `esp_read_mac()`. On
+  an ESP32-P4, which has no radio of its own, the station address is not in the
+  chip's MAC table: the factory MAC came out as all zeros, the default hostname
+  as `ESP-000000`
+
 ## [0.10.1] - 2026-10-13
 
 ### Fixed

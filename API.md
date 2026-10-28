@@ -220,6 +220,11 @@ falls back to the generated default (e.g. `ESP-02D6FC`). With
 `ConfigSource::FACTORY`, always returns the generated default. Returns `false`
 on truncation or mutex failure.
 
+The generated default is `<prefix>-XXYYZZ` from the last three bytes of a MAC
+address: the chip's base MAC on ESP32 (`ESP_MAC_BASE`), the interface's factory
+address elsewhere. It names the device rather than an interface, so a device's
+WiFi and Ethernet profiles generate the same one.
+
 **`setHostname()`** — validates against RFC 1123 before storing. An empty
 string resets the active hostname; subsequent `getHostname()` calls will return
 the generated default.
@@ -254,14 +259,38 @@ Lower value = higher priority. Valid range: [0, 254]. Value 255 is reserved as
 bool getMac(MACAddress mac,
             ConfigSource source = ConfigSource::ACTIVE) const;
 bool setMac(const MACAddress mac);
+bool hasMacOverride() const;
+bool hasFactoryMac() const;
+bool setFactoryMac(const MACAddress mac);   // for adapters
 ```
 
 **`getMac()`** — with `ConfigSource::ACTIVE`, returns the user-set override if
-non-zero, otherwise the hardware default. With `ConfigSource::FACTORY`, always
-returns the hardware default.
+one is set, otherwise the factory address. With `ConfigSource::FACTORY`, always
+returns the factory address. Returns `false` on mutex timeout, and also when the
+address asked for is the factory one and it is not known yet
+(`hasFactoryMac()`); `mac` is then zero-filled.
+
+The factory address is what the hardware itself uses: `ESP_MAC_WIFI_STA` and
+`ESP_MAC_ETH` from the ESP-IDF MAC table on ESP32 (universal or locally
+administered, as the chip's `UNIVERSAL_MAC_ADDRESSES` setting gives them),
+`WiFi.macAddress()` on ESP8266, a derived locally administered address for
+Ethernet on ESP8266, and the generated or configured address on AVR.
 
 **`setMac()`** — validates with `isValidMac()` before storing. To revert to the
-hardware default, use `setConfig()` with `mac` set to all zeros.
+factory address, use `setConfig()` with `mac` set to all zeros. Only an
+override is stored: without one, `saveCfg()` removes the key.
+
+**`hasMacOverride()`** — whether an override is set.
+
+**`hasFactoryMac()`** — whether the factory address is known. `true` from
+construction wherever the chip holds the address. `false` for WiFi on an
+ESP32-P4, whose station address belongs to the ESP-Hosted co-processor, until
+the adapter has started the interface and reported it.
+
+**`setFactoryMac()`** — for adapters: records the factory address as the driver
+reports it, for an interface whose address could not be read at construction.
+Accepted once, while `hasFactoryMac()` is `false`; a known address is never
+replaced.
 
 ### Bulk configuration
 
@@ -363,8 +392,10 @@ static bool        isValidConfig(const NetworkConfig& cfg);
 
 **`macFromStr()`** — parses `"AA:BB:CC:DD:EE:FF"` format (case-insensitive).
 
-**`isValidMac()`** — returns `false` if all bytes are `0x00` (unset) or all
-bytes are `0xFF` (broadcast).
+**`isValidMac()`** — returns `false` if all bytes are `0x00` (unset) or the
+I/G bit (bit 0 of byte 0) is set: a group (multicast) address, which includes
+the all-`0xFF` broadcast. No interface can send from one, and the drivers refuse
+it. Locally administered addresses are valid.
 
 **`ipToStr()`** — serialises an address to `"a.b.c.d"`, or to an empty string
 when it is `0.0.0.0` (unset), so a cleared optional field (gateway, DNS)
