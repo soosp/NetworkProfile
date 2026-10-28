@@ -5,7 +5,7 @@
  * @brief Compile-time version of the NetworkProfile library.
  *
  * Encoded as major * 10000 + minor * 100 + patch, the same scheme
- * AsyncConfigPortal's FIRMWARE_VERSION uses. 0.11.2 is 1102.
+ * AsyncConfigPortal's FIRMWARE_VERSION uses. 0.11.3 is 1103.
  *
  * It exists so that a consumer can require a minimum version at compile time.
  * That matters because the libraries built on this one deliberately do not
@@ -15,12 +15,12 @@
  * library.json, the check has to live in the source:
  *
  * @code
- * #if !defined(NETWORK_PROFILE_VERSION) || NETWORK_PROFILE_VERSION < 1102
- * #  error "This module needs NetworkProfile 0.11.2 or newer"
+ * #if !defined(NETWORK_PROFILE_VERSION) || NETWORK_PROFILE_VERSION < 1103
+ * #  error "This module needs NetworkProfile 0.11.3 or newer"
  * #endif
  * @endcode
  *
  * An undefined macro evaluates to 0 in #if, so the same test also catches the
  * versions released before this header existed.
  */
-#define NETWORK_PROFILE_VERSION 1102
+#define NETWORK_PROFILE_VERSION 1103

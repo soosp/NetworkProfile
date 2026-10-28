@@ -9,6 +9,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-10-29
+
 ### Fixed
 
 - ESP32: saving and loading a profile no longer logs error lines for keys that
@@ -601,7 +603,8 @@ First public release.
   concurrent reader never sees a half-updated configuration.
 - API reference (`API.md`).
 
-[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.11.2...HEAD
+[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.11.3...HEAD
+[0.11.3]: https://github.com/soosp/NetworkProfile/compare/0.11.2...0.11.3
 [0.11.2]: https://github.com/soosp/NetworkProfile/compare/0.11.1...0.11.2
 [0.11.1]: https://github.com/soosp/NetworkProfile/compare/0.11.0...0.11.1
 [0.11.0]: https://github.com/soosp/NetworkProfile/compare/0.10.1...0.11.0
