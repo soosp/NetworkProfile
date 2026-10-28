@@ -13,7 +13,8 @@ and this project adheres to
 
 ### Fixed
 
-- Sync version across all occurrences (`CHANGELOG.md`, `library.json`, `library.properties`)
+- Sync version across all occurrences (`CHANGELOG.md`, `library.json`,
+  `library.properties`)
 
 ## [0.11.1] - 2026-10-28
 
@@ -22,7 +23,8 @@ and this project adheres to
 - ESP32-P4 (and any chip without a radio): the WiFi profile's constructor no
   longer asks the MAC table for a station address the chip does not have, so
   the boot log loses `E system_api: 0 mac type is incorrect`. Nothing else
-  changes: the factory MAC was already unknown there until the adapter reports it
+  changes: the factory MAC was already unknown there until the adapter reports
+  it
 
 ## [0.11.0] - 2026-10-28
 
