@@ -9,6 +9,16 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- ESP32: saving and loading a profile no longer logs error lines for keys that
+  are absent by design — `nvs_erase_key fail: ip NOT_FOUND` and the rest of the
+  static-address keys under DHCP, `nvs_get_str len fail: host NOT_FOUND` for an
+  unset hostname, `nvs_get_blob len fail: mac NOT_FOUND` without a MAC override.
+  The profiles ask `isKey()` before `remove()`, `getString()` and `getBytes()`
+  (`detail/prefs_tools.h`); a real failure is still logged. ESP8266 and AVR are
+  unchanged
+
 ## [0.11.2] - 2026-10-28
 
 ### Fixed

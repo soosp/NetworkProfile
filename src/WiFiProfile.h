@@ -705,8 +705,8 @@ protected:
         if (!NetworkProfile::_doLoad(p)) return false;
         _ssid[0]     = '\0';
         _password[0] = '\0';
-        p.getString("ssid", _ssid,     MAX_SSID_SIZE);
-        p.getString("pass", _password, MAX_PASSWORD_SIZE);
+        prefs_getStr(p, "ssid", _ssid,     MAX_SSID_SIZE);
+        prefs_getStr(p, "pass", _password, MAX_PASSWORD_SIZE);
         const float pwr = p.getFloat("txpwr", DEFAULT_WIFI_TX_POWER_dBm);
         _txPower = isValidTxPower(pwr) ? pwr : DEFAULT_WIFI_TX_POWER_dBm;
         return true;

@@ -277,7 +277,7 @@ protected:
         const SyslogConfig def{};
         _cfg.enabled = p.getBool("en", def.enabled);
         _cfg.host[0] = '\0';
-        p.getString("host", _cfg.host, sizeof(_cfg.host));
+        prefs_getStr(p, "host", _cfg.host, sizeof(_cfg.host));
         _cfg.port        = p.getUShort("port", def.port);
         _cfg.minSeverity = p.getUChar("sev", def.minSeverity);
         _cfg.facility    = p.getUChar("fac", def.facility);

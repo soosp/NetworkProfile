@@ -37,6 +37,49 @@
 #endif
 
 /**
+ * @name Quiet access to keys that may be absent
+ *
+ * An absent key is a normal state here, not an error: a save removes the keys
+ * a profile does not use (the static address under DHCP, an empty string, a MAC
+ * without an override), and a load then reads them back as absent. The ESP32
+ * core's Preferences logs every such remove(), getString() and getBytes() at
+ * error level ("nvs_erase_key fail: ip NOT_FOUND", "nvs_get_str len fail: host
+ * NOT_FOUND"): half a dozen red lines per save, which bury a real failure and
+ * teach the reader to ignore them. These ask isKey() first, which is silent.
+ * The numeric getters log at verbose level only and need no wrapper.
+ *
+ * The absence itself is logged at debug level instead (log_d: compiled in only
+ * with CORE_DEBUG_LEVEL 4 or above, so a release build carries neither the
+ * strings nor the calls). The check is made on ESP32 only, the core whose
+ * Preferences logs these; elsewhere (ESP8266, AVR) the calls go straight
+ * through, as before.
+ * @{
+ */
+inline void prefs_remove(Preferences& p, const char* key) {
+#if defined(ARDUINO_ARCH_ESP32)
+    if (!p.isKey(key)) { log_d("%s: not stored, nothing to remove", key); return; }
+#endif
+    p.remove(key);
+}
+
+/// getString() into @p buf; @p buf is left alone when the key is absent.
+inline size_t prefs_getStr(Preferences& p, const char* key, char* buf, size_t len) {
+#if defined(ARDUINO_ARCH_ESP32)
+    if (!p.isKey(key)) { log_d("%s: not stored, default kept", key); return 0; }
+#endif
+    return p.getString(key, buf, len);
+}
+
+/// getBytes() into @p buf; @p buf is left alone when the key is absent.
+inline size_t prefs_getBytes(Preferences& p, const char* key, void* buf, size_t len) {
+#if defined(ARDUINO_ARCH_ESP32)
+    if (!p.isKey(key)) { log_d("%s: not stored, default kept", key); return 0; }
+#endif
+    return p.getBytes(key, buf, len);
+}
+/** @} */
+
+/**
  * @brief Stores a string, treating "empty" as "no value" rather than as failure.
  *
  * putString() returns the length written, and an empty string is zero of them —
@@ -52,6 +95,6 @@
  */
 inline bool prefs_putStr(Preferences& p, const char* key, const char* value) {
     if (value && value[0] != '\0') return p.putString(key, value) > 0;
-    p.remove(key);
+    prefs_remove(p, key);
     return true;
 }

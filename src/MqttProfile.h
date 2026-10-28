@@ -505,21 +505,21 @@ protected:
         const MqttConfig def{};
         _cfg.enabled = p.getBool("en", def.enabled);
         _cfg.host[0] = '\0';
-        p.getString("host", _cfg.host, sizeof(_cfg.host));
+        prefs_getStr(p, "host", _cfg.host, sizeof(_cfg.host));
         _cfg.port    = p.getUShort("port", def.port);
         _cfg.tls     = p.getBool("tls", def.tls);
         _cfg.user[0]     = '\0';
         _cfg.password[0] = '\0';
-        p.getString("user", _cfg.user, sizeof(_cfg.user));
-        p.getString("pass", _cfg.password, sizeof(_cfg.password));
+        prefs_getStr(p, "user", _cfg.user, sizeof(_cfg.user));
+        prefs_getStr(p, "pass", _cfg.password, sizeof(_cfg.password));
         // Absent in records written before this field existed; the default is
         // off, which is what such a device was doing.
         _cfg.haDiscovery = p.getBool("hadisc", def.haDiscovery);
         // Absent in older records: empty, the application's default
         _cfg.baseTopic[0] = '\0';
-        p.getString("topic", _cfg.baseTopic, sizeof(_cfg.baseTopic));
+        prefs_getStr(p, "topic", _cfg.baseTopic, sizeof(_cfg.baseTopic));
         _last[0] = '\0';
-        p.getString("last", _last, sizeof(_last));
+        prefs_getStr(p, "last", _last, sizeof(_last));
         return true;
     }
 };

@@ -1164,9 +1164,9 @@ protected:
             ok = ok && (p.putUInt("mask", (uint32_t)_mask)  > 0);
             ok = ok && (p.putUInt("gw", (uint32_t)_gateway) > 0);
         } else {
-            p.remove( "ip");
-            p.remove( "mask");
-            p.remove( "gw");
+            prefs_remove(p, "ip");
+            prefs_remove(p, "mask");
+            prefs_remove(p, "gw");
         }
         for (uint8_t i = 0; i < DNS_SERVER_COUNT; i++) {
             char key[8];
@@ -1174,7 +1174,7 @@ protected:
             if (!_dhcp)
                 ok = ok && (p.putUInt(key, (uint32_t)_dns[i]) > 0);
             else
-                p.remove(key);
+                prefs_remove(p, key);
         }
         ok = ok && (_putStr(p, "host", _hostname)         > 0);
         ok = ok && (p.putUChar( "prio", _priority)         > 0);
@@ -1184,7 +1184,7 @@ protected:
         if (isValidMac(_mac))
             ok = ok && (p.putBytes( "mac",  _mac, MAC_LEN) == MAC_LEN);
         else
-            p.remove("mac");
+            prefs_remove(p, "mac");
 
         return ok;
     }
@@ -1231,9 +1231,9 @@ protected:
         }
         _priority = p.getUChar("prio", 0);
         _hostname[0] = '\0';                    // absent key => generated default
-        p.getString("host", _hostname, MAX_HOSTNAME_SIZE);
+        prefs_getStr(p, "host", _hostname, MAX_HOSTNAME_SIZE);
         memset(_mac, 0, MAC_LEN);               // absent key => _macDefault, since
-        p.getBytes( "mac",  _mac, MAC_LEN);     // an all-zero _mac is not valid
+        prefs_getBytes(p, "mac",  _mac, MAC_LEN);     // an all-zero _mac is not valid
 
         return true;
     }

@@ -317,7 +317,7 @@ public:
             char key[8];
             snprintf(key, sizeof(key), "ntp%u", (unsigned)i);
             char buf[Host::MAX_FQDN_SIZE] = {};
-            p.getString(key, buf, sizeof(buf));
+            prefs_getStr(p, key, buf, sizeof(buf));
             if (buf[0] != '\0') {
                 snprintf(_cfg.server[i], Host::MAX_FQDN_SIZE, "%s", buf);
                 found = true;
@@ -380,7 +380,7 @@ protected:
             char key[8];
             snprintf(key, sizeof(key), "ntp%u", (unsigned)i);
             _cfg.server[i][0] = '\0';
-            p.getString(key, _cfg.server[i], Host::MAX_FQDN_SIZE);
+            prefs_getStr(p, key, _cfg.server[i], Host::MAX_FQDN_SIZE);
         }
         return true;
     }
