@@ -9,6 +9,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-28
+
 ### Added
 
 - `hasMacOverride()`: whether an active MAC override is set
@@ -572,7 +574,8 @@ First public release.
   concurrent reader never sees a half-updated configuration.
 - API reference (`API.md`).
 
-[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.10.1...HEAD
+[Unreleased]: https://github.com/soosp/NetworkProfile/compare/0.11.0...HEAD
+[0.11.0]: https://github.com/soosp/NetworkProfile/compare/0.10.1...0.11.0
 [0.10.1]: https://github.com/soosp/NetworkProfile/compare/0.10.0...0.10.1
 [0.10.0]: https://github.com/soosp/NetworkProfile/compare/0.9.0...0.10.0
 [0.9.0]: https://github.com/soosp/NetworkProfile/compare/0.8.0...0.9.0
